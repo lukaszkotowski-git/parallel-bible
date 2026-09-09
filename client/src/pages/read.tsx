@@ -121,13 +121,13 @@ export default function ReadPage() {
     invalidateUserState();
   };
 
-  /** Auto-zapis postępu: bez popupu, z możliwością cofnięcia przez 6 s. */
+  /** Auto-zapis postępu: krótki popup (2 s) z możliwością cofnięcia, zawsze da się zamknąć krzyżykiem. */
   const saveProgress = (ch: number, description: string) => {
     readMutation.mutate({ mark: true, ch });
     toast({
       title: "Zapisano postęp",
       description,
-      duration: 6000,
+      duration: 2000,
       action: (
         <ToastAction
           altText="Cofnij zapis postępu"
