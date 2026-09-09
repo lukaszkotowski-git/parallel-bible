@@ -1,0 +1,105 @@
+// Parallel Bible — schemat bazy
+// Zasada: tekst biblijny jest niezmienny (import jednorazowy),
+// baza użytkownika trzyma wyłącznie: postęp, ostatnią pozycję, ulubione.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Translation {
+  id        String  @id // "WEB", "BG"
+  language  String // "en" | "pl"
+  name      String // "World English Bible"
+  shortName String
+  year      Int?
+  license   String  @default("public domain")
+  sourceUrl String?
+  isDefault Boolean @default(false)
+  verses    Verse[]
+
+  @@map("translations")
+}
+
+model Book {
+  id           String  @id // OSIS-like: "Gen", "Exod", "Matt"
+  namePl       String
+  nameEn       String
+  testament    String // "OT" | "NT" (docelowo także "DC")
+  sortOrder    Int     @unique
+  chapterCount Int
+  verses       Verse[]
+
+  @@map("books")
+}
+
+model Verse {
+  id            Int         @id @default(autoincrement())
+  translationId String
+  bookId        String
+  chapter       Int
+  verse         Int
+  text          String
+  meta          Json? // rezerwa: przypisy, tytuły sekcji (faza 3)
+  translation   Translation @relation(fields: [translationId], references: [id], onDelete: Cascade)
+  book          Book        @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([translationId, bookId, chapter, verse])
+  @@index([bookId, chapter])
+}
+
+// ---- dane użytkownika (MVP: user "demo"; faza 2: tabele Better Auth) ----
+
+model User {
+  id           String           @id @default(cuid())
+  email        String?          @unique
+  name         String?
+  theme        String           @default("light") // preferencja czytania: "light" | "dark"
+  createdAt    DateTime         @default(now())
+  readChapters ReadChapter[]
+  favorites    Favorite[]
+  position     ReadingPosition?
+
+  @@map("users")
+}
+
+model ReadChapter {
+  userId  String
+  bookId  String
+  chapter Int
+  readAt  DateTime @default(now())
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, bookId, chapter])
+  @@map("read_chapters")
+}
+
+model ReadingPosition {
+  userId    String   @id
+  bookId    String
+  chapter   Int
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("reading_positions")
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  bookId    String
+  chapter   Int
+  verseFrom Int
+  verseTo   Int? // faza 2: zakresy wersetów
+  note      String? // faza 2: notatki
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bookId, chapter, verseFrom])
+  @@index([userId, bookId, chapter])
+  @@map("favorites")
+}
