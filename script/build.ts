@@ -7,6 +7,9 @@ import { rm, readFile } from "node:fs/promises";
 const allowlist = [
   "@google/generative-ai",
   "axios",
+  // better-auth jest ESM-only — jako external `require()` z bundla CJS bywa
+  // zawodny, więc wciągamy go do bundla razem z zależnościami przechodnimi.
+  "better-auth",
   "cors",
   "date-fns",
   "drizzle-orm",

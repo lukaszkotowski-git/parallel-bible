@@ -4,9 +4,6 @@ set -e
 echo "→ Migracje bazy danych"
 npx prisma migrate deploy
 
-echo "→ Konto demo"
-npx tsx scripts/seed.ts
-
 # Skrypt sam wykrywa, czy tekst jest już w bazie, i wtedy nic nie robi.
 # RUN_IMPORT=never  — całkowicie pomija krok importu
 # FORCE_IMPORT=1    — wymusza ponowne wgranie tekstu

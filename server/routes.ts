@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import type { Server } from "node:http";
 import { storage } from "./storage";
 import { getUserId } from "./db";
+import { googleEnabled, requireAuth } from "./auth";
 import { chapterRefSchema, favoriteInputSchema, themeSchema } from "@shared/schema";
 
 // Tekst biblijny jest niezmienny → agresywny cache po stronie klienta/CDN.
@@ -38,7 +39,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }),
   );
 
-  // ---- stan użytkownika (faza 2: te same handlery za sesją Better Auth) ----
+  // Co klient ma pokazać na ekranie logowania (publiczne, bez sesji).
+  app.get("/api/config", (_req, res) => res.json({ google: googleEnabled }));
+
+  // ---- stan użytkownika ----
+  // Jedna bramka na cały prefiks: bez sesji te trasy zwracają 401, a handlery
+  // poniżej mogą bezwarunkowo ufać `getUserId(req)`.
+  app.use("/api/me", requireAuth);
 
   app.get(
     "/api/me/state",

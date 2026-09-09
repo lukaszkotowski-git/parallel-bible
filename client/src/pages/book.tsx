@@ -1,7 +1,7 @@
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Check } from "lucide-react";
-import { AppHeader, useUserState } from "@/components/app-header";
+import { AppHeader, useAuthed, useUserState } from "@/components/app-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { qk, fetchReadChapters, type BookDto } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -9,9 +9,11 @@ import { cn } from "@/lib/utils";
 export default function BookPage() {
   const { book: bookId = "" } = useParams<{ book: string }>();
   const { data: books, isLoading } = useQuery<BookDto[]>({ queryKey: qk.books });
+  const { authed } = useAuthed();
   const { data: read } = useQuery({
     queryKey: qk.read(bookId),
     queryFn: () => fetchReadChapters(bookId),
+    enabled: authed,
   });
   const { data: state } = useUserState();
 

@@ -9,7 +9,7 @@ import {
   ChevronsUpDown,
   Check,
 } from "lucide-react";
-import { AppHeader } from "@/components/app-header";
+import { AppHeader, useAuthed } from "@/components/app-header";
 import { VerseRow } from "@/components/verse-row";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,6 +35,7 @@ export default function ReadPage() {
   const chapter = Number(params.chapter ?? 1);
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { authed } = useAuthed();
 
   const [openVerses, setOpenVerses] = useState<Set<number>>(new Set());
 
@@ -45,11 +46,13 @@ export default function ReadPage() {
   const { data: favorites } = useQuery({
     queryKey: qk.favorites(bookId, chapter),
     queryFn: () => fetchFavorites(bookId, chapter),
+    enabled: authed,
   });
 
   const { data: readChapters } = useQuery({
     queryKey: qk.read(bookId),
     queryFn: () => fetchReadChapters(bookId),
+    enabled: authed,
   });
 
   const favoriteSet = useMemo(
@@ -62,15 +65,16 @@ export default function ReadPage() {
   );
 
   // Nowy rozdział: zwiń polskie wersety i zapisz ostatnią pozycję czytania.
+  // Bez konta nie ma gdzie jej zapisać — samo czytanie działa tak samo.
   useEffect(() => {
     setOpenVerses(new Set());
     window.scrollTo({ top: 0 });
-    if (bookId && chapter) {
+    if (authed && bookId && chapter) {
       savePosition(bookId, chapter)
         .then(() => invalidateUserState())
         .catch(() => undefined);
     }
-  }, [bookId, chapter]);
+  }, [authed, bookId, chapter]);
 
   const readMutation = useMutation({
     mutationFn: async ({ mark, ch }: { mark: boolean; ch: number }) =>
@@ -92,7 +96,26 @@ export default function ReadPage() {
       return next;
     });
 
+  /** Zaproszenie do logowania zamiast cichego 401 z API. */
+  const promptLogin = (what: string) => {
+    toast({
+      title: "Zaloguj się, aby zapisać",
+      description: `${what} zapisujemy na koncie, żeby był dostępny też na telefonie.`,
+      duration: 6000,
+      action: (
+        <ToastAction
+          altText="Przejdź do logowania"
+          onClick={() => navigate("/login")}
+          data-testid="button-login-prompt"
+        >
+          Zaloguj
+        </ToastAction>
+      ),
+    });
+  };
+
   const toggleFavorite = async (v: number) => {
+    if (!authed) return promptLogin("Ulubione wersety");
     if (favoriteSet.has(v)) await removeFavorite(bookId, chapter, v);
     else await addFavorite(bookId, chapter, v);
     invalidateUserState();
@@ -119,7 +142,7 @@ export default function ReadPage() {
 
   const goNext = () => {
     if (!data?.nav.next) return;
-    if (!isRead) {
+    if (authed && !isRead) {
       saveProgress(chapter, `${data.book.namePl} ${chapter} oznaczony jako przeczytany.`);
     }
     navigate(`/czytaj/${data.nav.next.book}/${data.nav.next.chapter}`);
@@ -193,7 +216,9 @@ export default function ReadPage() {
                   variant={isRead ? "secondary" : "ghost"}
                   size="sm"
                   onClick={() => {
-                    if (isRead) {
+                    if (!authed) {
+                      promptLogin("Postęp czytania");
+                    } else if (isRead) {
                       readMutation.mutate({ mark: false, ch: chapter });
                       toast({ title: "Cofnięto oznaczenie", duration: 4000 });
                     } else {

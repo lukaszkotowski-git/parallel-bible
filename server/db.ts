@@ -10,20 +10,27 @@ export const prisma =
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
-export const DEMO_USER_EMAIL = process.env.DEMO_USER_EMAIL ?? "demo@parallel-bible.local";
+declare global {
+  namespace Express {
+    interface Request {
+      /** Ustawiane wyłącznie przez `requireAuth` (server/auth.ts). */
+      userId?: string;
+    }
+  }
+}
 
 /**
  * Jedyne miejsce, które wie „kim jest użytkownik".
- * MVP: seedowany użytkownik `demo`.
- * Faza 2 (Better Auth): podmiana ciała funkcji na `session.user.id` — handlery bez zmian.
+ * Tożsamość ustala `requireAuth` z sesji Better Auth i wkłada ją w `req.userId`;
+ * ta funkcja tylko ją odczytuje, dzięki czemu handlery tras nie dotykają sesji.
+ *
+ * Rzuca, jeśli trafi tu żądanie spoza `/api/me/*` — to znaczyłoby, że trasa
+ * użytkownika została zamontowana z pominięciem bramki autoryzacji.
  */
-export async function getUserId(_req?: unknown): Promise<string> {
-  const email = DEMO_USER_EMAIL;
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {},
-    create: { email, name: "Demo" },
-    select: { id: true },
-  });
-  return user.id;
+export async function getUserId(req?: { userId?: string }): Promise<string> {
+  const userId = req?.userId;
+  if (!userId) {
+    throw new Error("Trasa użytkownika bez requireAuth — brak req.userId");
+  }
+  return userId;
 }

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, BookOpen, Search } from "lucide-react";
-import { AppHeader, useUserState } from "@/components/app-header";
+import { AppHeader, useAuthed, useUserState } from "@/components/app-header";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { qk, fetchReadChapters, type BookDto } from "@/lib/api";
@@ -96,10 +96,12 @@ function BookSection({
 
 export default function Home() {
   const [query, setQuery] = useState("");
+  const { authed, pending } = useAuthed();
   const { data: books, isLoading } = useQuery<BookDto[]>({ queryKey: qk.books });
   const { data: read } = useQuery({
     queryKey: qk.read(),
     queryFn: () => fetchReadChapters(),
+    enabled: authed,
   });
 
   const readByBook = useMemo(() => {
@@ -134,6 +136,19 @@ export default function Home() {
 
         <div className="mt-6 space-y-4">
           <ContinueCard />
+
+          {!pending && !authed && (
+            <p
+              className="rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+              data-testid="text-login-hint"
+            >
+              Czytasz bez konta —{" "}
+              <Link href="/login" className="font-medium text-primary underline-offset-4 hover:underline">
+                zaloguj się
+              </Link>
+              , żeby zapisywać postęp i ulubione wersety na wszystkich urządzeniach.
+            </p>
+          )}
 
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

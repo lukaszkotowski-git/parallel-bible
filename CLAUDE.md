@@ -19,15 +19,16 @@ npm run check           # tsc type-check (noEmit)
 npx prisma generate     # regenerate Prisma client after schema.prisma changes
 npm run db:migrate:dev  # create/apply a dev migration (prisma migrate dev)
 npm run db:migrate      # apply migrations in production (prisma migrate deploy)
-npm run db:seed         # upsert the demo user (scripts/seed.ts)
 npm run import:bible    # import WEB + BG verse text into the database (idempotent, ~1 min)
 ```
 
 There is no lint script and no test suite configured — `npm run check` (tsc) is the only
 automated correctness gate. Always run it after non-trivial TypeScript changes.
 
-Local setup: `cp .env.example .env` (set `DATABASE_URL` for a local Postgres 16), then
-`npm install && npx prisma generate && npm run db:migrate:dev && npm run db:seed && npm run import:bible`.
+Local setup: `cp .env.example .env` (set `DATABASE_URL` for a local Postgres 16 and
+`BETTER_AUTH_SECRET`), then
+`npm install && npx prisma generate && npm run db:migrate:dev && npm run import:bible`.
+There is no seeded account — register through the UI at `/#/login`.
 
 The bible import can read from a local clone instead of fetching over HTTP:
 `git clone --depth 1 https://github.com/midvash/bible-data /data/bible-data && BIBLE_DATA_DIR=/data/bible-data npm run import:bible`.
@@ -41,12 +42,26 @@ mounts Vite in middleware mode (`server/vite.ts`); in production it serves the s
 (`server/static.ts`). Routes are split into read-only Scripture content vs. mutable user state —
 see the comment blocks in `server/routes.ts`.
 
-**No auth yet (by design).** `server/db.ts` has a single function, `getUserId()`, which currently
-always resolves to a seeded demo user (`DEMO_USER_EMAIL`, default `demo@parallel-bible.local`).
-Every API handler calls `getUserId(req)` rather than reading a session. The planned phase-2 wiring
-of Better Auth is meant to change *only the body of that function* (to `session.user.id`) — no
-route handler or client component should need to change. Keep that invariant when touching
-user-scoped code: never bypass `getUserId()` or hardcode the demo user id elsewhere.
+**Reading is public; saving requires an account.** This split is the core product constraint:
+`/api/books` and `/api/chapter/*` never require a session, while the whole `/api/me/*` prefix sits
+behind one `app.use("/api/me", requireAuth)` gate in `server/routes.ts`. `requireAuth`
+(`server/auth.ts`) resolves the Better Auth session and puts the id in `req.userId`; `getUserId(req)`
+in `server/db.ts` only reads it back, so individual route handlers never touch sessions. Keep that
+shape: gate new user-scoped routes by mounting them under `/api/me`, never by calling
+`auth.api.getSession` inside a handler.
+
+Because logged-out visitors get a `401` from `/api/me/*`, every client query against that prefix
+must be gated on the session (`enabled: authed`, via `useAuthed()` in `components/app-header.tsx`),
+otherwise the page throws on load for anonymous readers. Theme is the one piece of user state with
+an anonymous fallback — `localStorage` key `pb-theme`, overridden by the DB value once logged in.
+
+**Two ordering traps in the auth wiring** (both already handled, don't "clean them up"):
+`app.all("/api/auth/*splat", toNodeHandler(auth))` must stay *above* `express.json()` in
+`server/index.ts` — the body parser would consume the stream Better Auth needs — and the `*splat`
+named wildcard is required by Express 5's path-to-regexp, plain `*` throws at startup.
+
+Better Auth is ESM-only, so it is in the `allowlist` in `script/build.ts` (bundled into the CJS
+output) rather than left as an external `require()`.
 
 **Data model** (`prisma/schema.prisma`): Scripture content (`Book`, `Translation`, `Verse`) is
 treated as immutable reference data populated once by `scripts/import-bible.ts`; user data
@@ -89,7 +104,11 @@ fail to find it at runtime.
 ## Deployment
 
 Docker + docker-compose, targeting Dokploy. `docker-entrypoint.sh` runs on container start, in
-order: `prisma migrate deploy` → seed demo user → conditional bible import → `exec "$@"`.
+order: `prisma migrate deploy` → conditional bible import → `exec "$@"`.
+Required env beyond `DATABASE_URL`: `BETTER_AUTH_SECRET` (the app refuses to start in production
+without it) and `BETTER_AUTH_URL` (public origin; OAuth callbacks are built from it).
+`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are optional — absent, the Google button disappears and
+only email+password remains.
 - `RUN_IMPORT=never` skips the import step entirely.
 - `FORCE_IMPORT=1` forces re-import even if text already exists.
 - Import failures are non-fatal at startup (logged, app still starts) since re-running the import

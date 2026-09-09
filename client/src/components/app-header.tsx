@@ -1,24 +1,66 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Moon, Sun } from "lucide-react";
+import { LogIn, LogOut, Moon, Sun } from "lucide-react";
 import { Brand } from "@/components/brand";
 import { ProgressRing } from "@/components/progress-ring";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
-import { qk, saveTheme, type UserStateDto } from "@/lib/api";
+import { clearUserState, qk, saveTheme, type UserStateDto } from "@/lib/api";
+import { signOut, useSession } from "@/lib/auth";
 import { queryClient } from "@/lib/queryClient";
 
+/**
+ * Stan użytkownika istnieje tylko dla zalogowanych — bez sesji zapytanie
+ * w ogóle nie startuje (inaczej /api/me/state zwracałoby 401 przy każdym wejściu).
+ */
 export function useUserState() {
-  return useQuery<UserStateDto>({ queryKey: qk.state, staleTime: 0 });
+  const { data: session } = useSession();
+  return useQuery<UserStateDto>({ queryKey: qk.state, staleTime: 0, enabled: !!session });
 }
 
-export function AppHeader({ children }: { children?: React.ReactNode }) {
-  const { data: state, isLoading } = useUserState();
-  const theme = state?.theme ?? "light";
+/** Czy wolno zapisywać postęp. `pending` = sesja jeszcze się sprawdza. */
+export function useAuthed() {
+  const { data: session, isPending } = useSession();
+  return { authed: !!session, pending: isPending, user: session?.user };
+}
+
+const THEME_KEY = "pb-theme";
+
+function readStoredTheme(): "light" | "dark" {
+  try {
+    return localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light";
+  } catch {
+    return "light";
+  }
+}
+
+/**
+ * Motyw ma działać także przed zalogowaniem, więc źródłem prawdy jest
+ * localStorage; konto tylko go nadpisuje i przenosi między urządzeniami.
+ */
+function useTheme() {
+  const { data: session } = useSession();
+  const { data: state } = useUserState();
+  const [stored, setStored] = useState<"light" | "dark">(readStoredTheme);
+  const theme = session ? (state?.theme ?? stored) : stored;
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      /* tryb prywatny — motyw po prostu nie przetrwa odświeżenia */
+    }
   }, [theme]);
 
   const themeMutation = useMutation({
@@ -31,9 +73,67 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
     onSettled: () => queryClient.invalidateQueries({ queryKey: qk.state }),
   });
 
+  const toggle = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setStored(next);
+    if (session) themeMutation.mutate(next);
+  };
+
+  return { theme, toggle };
+}
+
+function initials(nameOrEmail: string) {
+  const base = nameOrEmail.trim();
+  if (!base) return "?";
+  const parts = base.split(/[\s.@_-]+/).filter(Boolean);
+  return (parts[0]![0]! + (parts[1]?.[0] ?? "")).toUpperCase();
+}
+
+function AccountMenu() {
+  const { user } = useAuthed();
+  if (!user) return null;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 rounded-full bg-primary/10 text-xs font-semibold text-primary hover:bg-primary/15"
+          aria-label="Menu konta"
+          data-testid="button-account"
+        >
+          {initials(user.name || user.email)}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel className="font-normal">
+          <span className="block truncate text-sm font-medium">{user.name}</span>
+          <span className="block truncate text-xs text-muted-foreground">{user.email}</span>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={async () => {
+            await signOut();
+            clearUserState();
+          }}
+          data-testid="button-logout"
+        >
+          <LogOut className="mr-2 h-4 w-4" /> Wyloguj
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+export function AppHeader({ children }: { children?: React.ReactNode }) {
+  const { theme, toggle } = useTheme();
+  const { authed, pending } = useAuthed();
+  const { data: state, isLoading } = useUserState();
+
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur-sm">
-      <div className="mx-auto flex h-16 max-w-3xl items-center gap-3 px-4 sm:px-6">
+      <div className="mx-auto flex h-16 max-w-3xl items-center gap-2 px-4 sm:gap-3 sm:px-6">
         <Brand />
         <div className="flex-1">{children}</div>
 
@@ -44,7 +144,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               size="icon"
               className="h-9 w-9"
               aria-label={theme === "dark" ? "Włącz tryb jasny" : "Włącz tryb ciemny"}
-              onClick={() => themeMutation.mutate(theme === "dark" ? "light" : "dark")}
+              onClick={toggle}
               data-testid="button-theme-toggle"
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -53,26 +153,39 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           <TooltipContent>Tryb {theme === "dark" ? "jasny" : "ciemny"}</TooltipContent>
         </Tooltip>
 
-        {isLoading ? (
-          <Skeleton className="h-11 w-11 rounded-full" />
+        {pending ? (
+          <Skeleton className="h-9 w-9 rounded-full" />
+        ) : !authed ? (
+          <Button asChild size="sm" data-testid="button-login">
+            <Link href="/login">
+              <LogIn className="mr-1.5 h-4 w-4" /> Zaloguj
+            </Link>
+          </Button>
         ) : (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="rounded-full focus-visible:ring-2 focus-visible:ring-ring"
-                data-testid="button-progress"
-              >
-                <ProgressRing
-                  percent={state?.percent ?? 0}
-                  label={`Przeczytane ${state?.readCount ?? 0} z ${state?.totalChapters ?? 0} rozdziałów`}
-                />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              Przeczytane {state?.readCount ?? 0} z {state?.totalChapters ?? 0} rozdziałów
-            </TooltipContent>
-          </Tooltip>
+          <>
+            {isLoading ? (
+              <Skeleton className="h-11 w-11 rounded-full" />
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="rounded-full focus-visible:ring-2 focus-visible:ring-ring"
+                    data-testid="button-progress"
+                  >
+                    <ProgressRing
+                      percent={state?.percent ?? 0}
+                      label={`Przeczytane ${state?.readCount ?? 0} z ${state?.totalChapters ?? 0} rozdziałów`}
+                    />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Przeczytane {state?.readCount ?? 0} z {state?.totalChapters ?? 0} rozdziałów
+                </TooltipContent>
+              </Tooltip>
+            )}
+            <AccountMenu />
+          </>
         )}
       </div>
     </header>

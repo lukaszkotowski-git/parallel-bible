@@ -61,3 +61,10 @@ export function invalidateUserState() {
   queryClient.invalidateQueries({ queryKey: ["/api/me/read"] });
   queryClient.invalidateQueries({ queryKey: ["/api/me/favorites"] });
 }
+
+/** Wyrzuca cudzy stan z pamięci po wylogowaniu — treść biblijna zostaje. */
+export function clearUserState() {
+  queryClient.removeQueries({ queryKey: qk.state });
+  queryClient.removeQueries({ queryKey: ["/api/me/read"] });
+  queryClient.removeQueries({ queryKey: ["/api/me/favorites"] });
+}

@@ -1,18 +1,28 @@
 import "dotenv/config";
 import express, { Response, NextFunction } from 'express';
 import type { Request } from 'express';
+import { toNodeHandler } from "better-auth/node";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
+import { auth } from "./auth";
 import { createServer } from "node:http";
 
 const app = express();
 const httpServer = createServer(app);
+
+// W produkcji przed aplikacją stoi reverse proxy — bez tego req.ip to adres proxy.
+if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
 
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
   }
 }
+
+// UWAGA: musi stać PRZED express.json(). Better Auth czyta surowy strumień żądania,
+// a parser body zdążyłby go skonsumować i logowanie wisiałoby w nieskończoność.
+// Składnia `*splat` (nie samo `*`) jest wymagana przez Express 5.
+app.all("/api/auth/*splat", toNodeHandler(auth));
 
 app.use(
   express.json({

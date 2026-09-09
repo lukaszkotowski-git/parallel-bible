@@ -7,12 +7,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Home from "@/pages/home";
 import BookPage from "@/pages/book";
 import ReadPage from "@/pages/read";
+import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 
 function AppRouter() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/login" component={LoginPage} />
       <Route path="/ksiega/:book" component={BookPage} />
       <Route path="/czytaj/:book/:chapter" component={ReadPage} />
       <Route component={NotFound} />
