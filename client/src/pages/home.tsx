@@ -43,7 +43,10 @@ function BookTile({ book, readCount }: { book: BookDto; readCount: number }) {
       className="group relative flex flex-col justify-between gap-2 overflow-hidden rounded-lg border border-card-border bg-card p-3 text-left transition-colors hover-elevate"
       data-testid={`link-book-${book.id}`}
     >
-      <span className="text-sm font-medium leading-snug">{book.shortPl}</span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-medium leading-snug">{book.shortPl}</span>
+        <span className="block truncate text-xs text-muted-foreground">{book.nameEn}</span>
+      </span>
       <span className="flex items-center justify-between text-xs text-muted-foreground">
         <span className="tabular-nums">{book.chapterCount} rozdz.</span>
         {readCount > 0 && (
