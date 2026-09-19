@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { BarChart3, CalendarCheck, LogIn, LogOut, Moon, StickyNote, Sun } from "lucide-react";
+import { Award, BarChart3, CalendarCheck, Coffee, Layers, LogIn, Trophy, Users, ShieldCheck, LogOut, Moon, StickyNote, Sun } from "lucide-react";
 import { Brand } from "@/components/brand";
 import { ProgressRing } from "@/components/progress-ring";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { clearUserState, qk, saveTheme, type UserStateDto } from "@/lib/api";
-import { signOut, useSession } from "@/lib/auth";
+import { signOut, useAppConfig, useSession } from "@/lib/auth";
 import { queryClient } from "@/lib/queryClient";
 
 /**
@@ -91,6 +91,8 @@ function initials(nameOrEmail: string) {
 
 function AccountMenu() {
   const { user } = useAuthed();
+  const { data: config } = useAppConfig();
+  const { data: state } = useUserState();
   if (!user) return null;
 
   return (
@@ -116,11 +118,35 @@ function AccountMenu() {
           <Link href="/plany" data-testid="link-plans"><CalendarCheck className="mr-2 h-4 w-4" /> Plany czytania</Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
+          <Link href="/odznaki" data-testid="link-badges"><Award className="mr-2 h-4 w-4" /> Postępy i odznaki</Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/nauka" data-testid="link-learn"><Layers className="mr-2 h-4 w-4" /> Nauka wersetów</Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/ranking" data-testid="link-leaderboard"><Trophy className="mr-2 h-4 w-4" /> Ranking</Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/grupy" data-testid="link-groups"><Users className="mr-2 h-4 w-4" /> Grupy</Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
           <Link href="/statystyki" data-testid="link-stats"><BarChart3 className="mr-2 h-4 w-4" /> Statystyki</Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link href="/notatki" data-testid="link-notes"><StickyNote className="mr-2 h-4 w-4" /> Moje notatki</Link>
         </DropdownMenuItem>
+        {config?.coffeeUrl && (
+          <DropdownMenuItem asChild>
+            <a href={config.coffeeUrl} target="_blank" rel="noopener noreferrer" data-testid="link-coffee-menu">
+              <Coffee className="mr-2 h-4 w-4" /> Postaw mi kawę
+            </a>
+          </DropdownMenuItem>
+        )}
+        {state?.role === "admin" && (
+          <DropdownMenuItem asChild>
+            <Link href="/admin" data-testid="link-admin"><ShieldCheck className="mr-2 h-4 w-4" /> Panel administratora</Link>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={async () => {
@@ -161,6 +187,18 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             </Button>
           </TooltipTrigger>
           <TooltipContent>Tryb {theme === "dark" ? "jasny" : "ciemny"}</TooltipContent>
+        </Tooltip>
+
+        {/* Ranking widoczny dla każdego; bez konta strona pokaże zaproszenie do logowania. */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button asChild variant="ghost" size="icon" className="h-9 w-9">
+              <Link href="/ranking" aria-label="Ranking czytelników" data-testid="link-header-leaderboard">
+                <Trophy className="h-4 w-4" />
+              </Link>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Ranking</TooltipContent>
         </Tooltip>
 
         {pending ? (

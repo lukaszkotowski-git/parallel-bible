@@ -108,3 +108,33 @@ export function daysBetween(a: string, b: string): number {
 export function currentPlanDay(startKey: string, todayKey: string): number {
   return Math.max(1, daysBetween(startKey, todayKey) + 1);
 }
+
+export interface PlanStatus {
+  chapters: PlanChapter[];
+  currentDay: number;
+  finished: boolean;
+  /** Rozdziały zaplanowane na dni sprzed dzisiaj, a nieprzeczytane. */
+  overdue: PlanChapter[];
+  today: PlanChapter[];
+}
+
+/** Stan planu na „dziś" w strefie `tz` — wspólne dla planów osobistych i grupowych. */
+export function planStatus(
+  cfg: { books: string[]; days: number; startedAt: Date },
+  isRead: (c: PlanChapter) => boolean,
+  tz: string,
+  now: Date = new Date(),
+): PlanStatus {
+  const chapters = planChapters(cfg.books);
+  const n = chapters.length;
+  const currentDay = currentPlanDay(dayKey(cfg.startedAt, tz), dayKey(now, tz));
+  const overdueUntil = Math.floor((Math.min(currentDay - 1, cfg.days) * n) / cfg.days);
+  const finished = currentDay > cfg.days;
+  return {
+    chapters,
+    currentDay,
+    finished,
+    overdue: chapters.slice(0, overdueUntil).filter((c) => !isRead(c)),
+    today: finished ? [] : chaptersForDay(chapters, cfg.days, currentDay),
+  };
+}

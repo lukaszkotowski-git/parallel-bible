@@ -5,6 +5,7 @@ import { AppHeader, useAuthed, useUserState } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { announceReward } from "@/lib/rewards";
 import { fetchReadChapters, invalidateUserState, qk, setBookRead, type BookDto } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -25,9 +26,14 @@ export default function BookPage() {
   const { toast } = useToast();
   const bulk = useMutation({
     mutationFn: (read: boolean) => setBookRead(bookId, read),
-    onSuccess: (_d, read) => {
+    onSuccess: (reward, read) => {
       invalidateUserState();
-      toast({ title: read ? "Oznaczono całą księgę jako przeczytaną" : "Odznaczono całą księgę", duration: 3000 });
+      announceReward(reward);
+      toast({
+        title: read ? "Oznaczono całą księgę jako przeczytaną" : "Odznaczono całą księgę",
+        description: read ? "Trafia do postępu, ale serię i punkty zdobywasz, czytając." : undefined,
+        duration: 4000,
+      });
     },
     onError: () => toast({ title: "Nie udało się zapisać", variant: "destructive", duration: 4000 }),
   });

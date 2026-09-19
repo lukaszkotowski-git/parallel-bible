@@ -1,6 +1,7 @@
 import { prisma } from "./db";
 import { BOOK_BY_ID } from "@shared/books";
 import { chaptersForDay, currentPlanDay, dayKey, daysBetween, planChapters } from "@shared/plans";
+import { getProgress } from "./gamification";
 import type {
   BookDto,
   ChapterDto,
@@ -16,6 +17,7 @@ import type {
   StatsDto,
   UserStateDto,
 } from "@shared/schema";
+import type { AdminUserDto, AdminUserPatch, AdminUsersDto } from "@shared/schema";
 
 const EN = "WEB";
 const PL = "BG";
@@ -41,7 +43,13 @@ export interface IStorage {
   createPlan(userId: string, input: PlanInput): Promise<void>;
   deletePlan(userId: string, planId: string): Promise<void>;
   getStats(userId: string, tz: string): Promise<StatsDto>;
+  adminListUsers(q: string, page: number, pageSize: number): Promise<AdminUsersDto>;
+  adminUpdateUser(actorId: string, targetId: string, patch: AdminUserPatch): Promise<void>;
+  adminRevokeSessions(targetId: string): Promise<void>;
+  adminDeleteUser(actorId: string, targetId: string): Promise<void>;
 }
+
+const httpError = (status: number, message: string) => Object.assign(new Error(message), { status });
 
 /** Ile dni wstecz zwraca mapa aktywności (26 tygodni = półroczny „kalendarz"). */
 const DAILY_WINDOW_DAYS = 182;
@@ -137,7 +145,7 @@ export class DatabaseStorage implements IStorage {
       prisma.readingPosition.findUnique({ where: { userId } }),
       // Mianownik liczony z bazy, nie hardcodowany — po dodaniu deuterokanonu przeliczy się sam.
       prisma.book.aggregate({ _sum: { chapterCount: true } }),
-      prisma.user.findUnique({ where: { id: userId }, select: { theme: true } }),
+      prisma.user.findUnique({ where: { id: userId }, select: { theme: true, role: true } }),
     ]);
 
     const totalChapters = totals._sum.chapterCount ?? 0;
@@ -156,6 +164,7 @@ export class DatabaseStorage implements IStorage {
       percent: totalChapters ? Math.round((readCount / totalChapters) * 1000) / 10 : 0,
       favoritesCount,
       theme: user?.theme === "dark" ? "dark" : "light",
+      role: user?.role === "admin" ? "admin" : "user",
     };
   }
 
@@ -189,7 +198,8 @@ export class DatabaseStorage implements IStorage {
     if (!book) return false;
     if (read) {
       await prisma.readChapter.createMany({
-        data: Array.from({ length: book.chapterCount }, (_, i) => ({ userId, bookId, chapter: i + 1 })),
+        // counted:false — zbiorcze odhaczenie „już to czytałem" liczy się do postępu, ale nie do serii/XP.
+        data: Array.from({ length: book.chapterCount }, (_, i) => ({ userId, bookId, chapter: i + 1, counted: false })),
         skipDuplicates: true,
       });
     } else {
@@ -258,13 +268,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getMarks(userId: string, bookId: string, chapter: number): Promise<ChapterMarksDto> {
-    const [highlights, notes] = await Promise.all([
+    const [highlights, notes, checks, cards] = await Promise.all([
       prisma.highlight.findMany({ where: { userId, bookId, chapter }, orderBy: { verse: "asc" } }),
       prisma.verseNote.findMany({ where: { userId, bookId, chapter }, orderBy: { verse: "asc" } }),
+      prisma.verseCheck.findMany({ where: { userId, bookId, chapter }, select: { verse: true, understood: true } }),
+      prisma.learnCard.findMany({ where: { userId, bookId, chapter }, select: { verse: true } }),
     ]);
     return {
       highlights: highlights.map((h) => ({ verse: h.verse, color: h.color as HighlightColor })),
       notes: notes.map((n) => ({ verse: n.verse, text: n.text, updatedAt: n.updatedAt.toISOString() })),
+      checks,
+      cards: cards.map((c) => c.verse),
     };
   }
 
@@ -349,57 +363,146 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getStats(userId: string, tz: string): Promise<StatsDto> {
-    const [read, readByBook] = await Promise.all([
-      prisma.readChapter.findMany({ where: { userId }, select: { readAt: true } }),
-      prisma.readChapter.findMany({
-        where: { userId },
-        select: { bookId: true, chapter: true },
-        orderBy: { chapter: "asc" },
-      }),
+    const [read, progress] = await Promise.all([
+      prisma.readChapter.findMany({ where: { userId }, select: { bookId: true, chapter: true, readAt: true, counted: true } }),
+      // Seria (z „dniem oddechu" i przywróceniem) ma jedno źródło prawdy: gamifikacja.
+      getProgress(userId, tz),
     ]);
 
+    // Kalendarz aktywności pokazuje tylko czytanie, które się liczy (nie odhaczanie zbiorcze).
     const perDay = new Map<string, number>();
     for (const r of read) {
+      if (!r.counted) continue;
       const k = dayKey(r.readAt, tz);
       perDay.set(k, (perDay.get(k) ?? 0) + 1);
     }
-
     const todayKey = dayKey(new Date(), tz);
-    const days = [...perDay.keys()].sort();
-
-    let longest = 0;
-    let run = 0;
-    for (let i = 0; i < days.length; i++) {
-      run = i > 0 && daysBetween(days[i - 1]!, days[i]!) === 1 ? run + 1 : 1;
-      longest = Math.max(longest, run);
-    }
-
-    // Seria żyje, jeśli ostatni dzień czytania to dziś albo wczoraj (dziś jeszcze można zdążyć).
-    let current = 0;
-    const last = days[days.length - 1];
-    if (last && daysBetween(last, todayKey) <= 1) {
-      current = 1;
-      for (let i = days.length - 1; i > 0 && daysBetween(days[i - 1]!, days[i]!) === 1; i--) current++;
-    }
-
     const daily: Record<string, number> = {};
     for (const [k, n] of perDay) if (daysBetween(k, todayKey) < DAILY_WINDOW_DAYS) daily[k] = n;
 
     const byBook: Record<string, number[]> = {};
-    for (const r of readByBook) {
+    for (const r of [...read].sort((a, b) => a.chapter - b.chapter)) {
       const list = byBook[r.bookId] ?? [];
       list.push(r.chapter);
       byBook[r.bookId] = list;
     }
 
     return {
-      currentStreak: current,
-      longestStreak: longest,
-      readToday: perDay.has(todayKey),
+      currentStreak: progress.streak.current,
+      longestStreak: progress.streak.longest,
+      readToday: progress.streak.readToday,
       totalRead: read.length,
       daily,
       byBook,
     };
+  }
+
+  async adminListUsers(q: string, page: number, pageSize: number): Promise<AdminUsersDto> {
+    const term = q.trim();
+    const where = term
+      ? {
+          OR: [
+            { email: { contains: term, mode: "insensitive" as const } },
+            { name: { contains: term, mode: "insensitive" as const } },
+          ],
+        }
+      : {};
+    const weekAgo = new Date(Date.now() - 7 * 86_400_000);
+
+    const [rows, total, verified, admins, newLast7d, activeSessions] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          emailVerified: true,
+          role: true,
+          createdAt: true,
+          accounts: { select: { providerId: true } },
+          // Tylko liczniki — nie wczytujemy treści notatek ani ulubionych.
+          _count: {
+            select: { readChapters: true, favorites: true, verseNotes: true, highlights: true, plans: true },
+          },
+        },
+      }),
+      prisma.user.count({ where }),
+      prisma.user.count({ where: { emailVerified: true } }),
+      prisma.user.count({ where: { role: "admin" } }),
+      prisma.user.count({ where: { createdAt: { gte: weekAgo } } }),
+      prisma.session.groupBy({ by: ["userId"], where: { updatedAt: { gte: weekAgo } } }),
+    ]);
+
+    const ids = rows.map((r) => r.id);
+    const [lastSession, lastRead, totalUsers] = await Promise.all([
+      prisma.session.groupBy({ by: ["userId"], where: { userId: { in: ids } }, _max: { updatedAt: true } }),
+      prisma.readChapter.groupBy({ by: ["userId"], where: { userId: { in: ids } }, _max: { readAt: true } }),
+      prisma.user.count(),
+    ]);
+    const sessionAt = new Map(lastSession.map((s) => [s.userId, s._max.updatedAt]));
+    const readAt = new Map(lastRead.map((s) => [s.userId, s._max.readAt]));
+
+    const users: AdminUserDto[] = rows.map((u) => {
+      const times = [sessionAt.get(u.id), readAt.get(u.id)].filter((d): d is Date => !!d);
+      const last = times.length ? new Date(Math.max(...times.map((d) => d.getTime()))) : null;
+      return {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        emailVerified: u.emailVerified,
+        role: u.role === "admin" ? "admin" : "user",
+        createdAt: u.createdAt.toISOString(),
+        lastActiveAt: last?.toISOString() ?? null,
+        providers: [...new Set(u.accounts.map((a) => a.providerId))],
+        counts: {
+          read: u._count.readChapters,
+          favorites: u._count.favorites,
+          notes: u._count.verseNotes,
+          highlights: u._count.highlights,
+          plans: u._count.plans,
+        },
+      };
+    });
+
+    return {
+      users,
+      total,
+      page,
+      pageSize,
+      summary: { total: totalUsers, verified, admins, newLast7d, activeLast7d: activeSessions.length },
+    };
+  }
+
+  async adminUpdateUser(actorId: string, targetId: string, patch: AdminUserPatch) {
+    const target = await prisma.user.findUnique({ where: { id: targetId }, select: { role: true } });
+    if (!target) throw httpError(404, "Nie znaleziono użytkownika");
+    if (patch.role === "user" && target.role === "admin") {
+      if (targetId === actorId) throw httpError(400, "Nie możesz odebrać sobie roli administratora");
+      // Zawsze musi zostać ktoś z dostępem do panelu.
+      if ((await prisma.user.count({ where: { role: "admin" } })) <= 1) {
+        throw httpError(400, "To ostatni administrator");
+      }
+    }
+    await prisma.user.update({
+      where: { id: targetId },
+      data: {
+        ...(patch.role !== undefined ? { role: patch.role } : {}),
+        ...(patch.emailVerified !== undefined ? { emailVerified: patch.emailVerified } : {}),
+      },
+    });
+  }
+
+  async adminRevokeSessions(targetId: string) {
+    await prisma.session.deleteMany({ where: { userId: targetId } });
+  }
+
+  async adminDeleteUser(actorId: string, targetId: string) {
+    if (targetId === actorId) throw httpError(400, "Nie możesz usunąć własnego konta z panelu");
+    const { count } = await prisma.user.deleteMany({ where: { id: targetId } });
+    if (count === 0) throw httpError(404, "Nie znaleziono użytkownika");
   }
 }
 

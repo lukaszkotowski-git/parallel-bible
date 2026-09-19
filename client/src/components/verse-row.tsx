@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Highlighter, MoreHorizontal, Pencil, StickyNote, Star } from "lucide-react";
+import { Highlighter, Layers, MoreHorizontal, Pencil, StickyNote, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,6 +27,10 @@ interface VerseRowProps {
   note?: string;
   onToggle: () => void;
   onToggleFavorite: () => void;
+  /** Tryb nauki (tylko zalogowani): odpowiedź po odsłonięciu PL i stan fiszki. */
+  learn?: { checked: boolean | undefined; inDeck: boolean };
+  onCheck?: (understood: boolean) => void;
+  onToggleCard?: () => void;
   onHighlight: (color: HighlightColor | null) => void;
   /** Pusty tekst usuwa notatkę. */
   onSaveNote: (text: string) => void;
@@ -45,6 +49,9 @@ export function VerseRow({
   note,
   onToggle,
   onToggleFavorite,
+  learn,
+  onCheck,
+  onToggleCard,
   onHighlight,
   onSaveNote,
 }: VerseRowProps) {
@@ -189,9 +196,51 @@ export function VerseRow({
             <Button variant="ghost" size="sm" className="w-full justify-start" onClick={startEditing}>
               <StickyNote className="mr-2 h-4 w-4" /> {note ? "Edytuj notatkę" : "Dodaj notatkę"}
             </Button>
+            {onToggleCard && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => {
+                  onToggleCard();
+                  setMenuOpen(false);
+                }}
+              >
+                <Layers className="mr-2 h-4 w-4" /> {learn?.inDeck ? "Usuń z powtórek" : "Dodaj do powtórek"}
+              </Button>
+            )}
           </PopoverContent>
         </Popover>
       </div>
+
+      {open && learn && verse.pl && onCheck && (
+        <fieldset
+          className="col-start-2 m-0 mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 border-0 p-0 text-xs text-muted-foreground"
+          aria-label={`Czy rozumiesz werset ${verse.v} po angielsku?`}
+        >
+          <span>Zrozumiałeś po angielsku?</span>
+          {[
+            { value: true, label: "Tak" },
+            { value: false, label: "Musiałem sprawdzić" },
+          ].map((o) => (
+            <button
+              key={String(o.value)}
+              type="button"
+              aria-pressed={learn.checked === o.value}
+              onClick={() => onCheck(o.value)}
+              className={cn(
+                "rounded-full border px-2.5 py-1 transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                learn.checked === o.value
+                  ? "border-primary/50 bg-primary/10 text-foreground"
+                  : "border-border hover:border-primary/40 hover:text-foreground",
+              )}
+              data-testid={`button-check-${o.value ? "yes" : "no"}-${verse.v}`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </fieldset>
+      )}
 
       {(note || editing) && (
         <div className="col-start-2 mt-2">

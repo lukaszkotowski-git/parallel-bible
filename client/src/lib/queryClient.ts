@@ -1,5 +1,6 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
 
 async function throwIfResNotOk(res: Response) {
@@ -16,7 +17,8 @@ export async function apiRequest(
 ): Promise<Response> {
   const res = await fetch(`${API_BASE}${url}`, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    // X-Timezone: serwer liczy „dziś", serie i cel dzienny w kalendarzu użytkownika.
+    headers: { "X-Timezone": TIME_ZONE, ...(data ? { "Content-Type": "application/json" } : {}) },
     body: data ? JSON.stringify(data) : undefined,
   });
 
@@ -30,7 +32,7 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(`${API_BASE}${queryKey.join("/")}`);
+    const res = await fetch(`${API_BASE}${queryKey.join("/")}`, { headers: { "X-Timezone": TIME_ZONE } });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
       return null;

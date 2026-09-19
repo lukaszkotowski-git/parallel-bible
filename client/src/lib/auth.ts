@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { createAuthClient } from "better-auth/react";
 
 /**
@@ -11,8 +12,8 @@ export const { signIn, signUp, signOut, useSession } = authClient;
 /** Czy pokazywać przycisk „Zaloguj przez Google" — zależy od kluczy na serwerze. */
 export async function fetchAuthConfig() {
   const res = await fetch("/api/config");
-  if (!res.ok) return { google: false, mail: false };
-  return (await res.json()) as { google: boolean; mail: boolean };
+  if (!res.ok) return { google: false, mail: false, coffeeUrl: null };
+  return (await res.json()) as { google: boolean; mail: boolean; coffeeUrl: string | null };
 }
 
 /** Po powrocie z OAuth wracamy na stronę główną (routing jest hash-owy). */
@@ -26,3 +27,8 @@ export const VERIFIED_CALLBACK_URL = `${window.location.origin}/?verified=1#/`;
 
 /** Link z maila o resecie hasła; Better Auth dokleja `?token=…` przed hashem. */
 export const RESET_REDIRECT_URL = `${window.location.origin}/#/reset-hasla`;
+
+/** Konfiguracja publiczna serwera (Google, e-mail, „Postaw mi kawę"); jedno zapytanie dla całej aplikacji. */
+export function useAppConfig() {
+  return useQuery({ queryKey: ["auth-config"], queryFn: fetchAuthConfig, staleTime: Infinity });
+}

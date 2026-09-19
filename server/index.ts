@@ -4,7 +4,7 @@ import type { Request } from 'express';
 import { toNodeHandler } from "better-auth/node";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
-import { auth } from "./auth";
+import { auth, promoteConfiguredAdmins } from "./auth";
 import { createServer } from "node:http";
 
 const app = express();
@@ -72,6 +72,7 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  await promoteConfiguredAdmins().catch((err) => console.error("ADMIN_EMAILS:", err));
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

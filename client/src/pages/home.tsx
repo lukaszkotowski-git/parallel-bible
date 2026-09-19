@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, BookOpen, Search } from "lucide-react";
+import { CoffeeLink } from "@/components/coffee-link";
+import { TodayCards } from "@/components/today-card";
 import { readLocalPosition } from "@/lib/last-position";
 import { Button } from "@/components/ui/button";
 import { AppHeader, useAuthed, useUserState } from "@/components/app-header";
@@ -157,6 +159,7 @@ export default function Home() {
 
         <div className="mt-6 space-y-4">
           <ContinueCard />
+          {authed && <TodayCards />}
 
           {!pending && !authed && (
             <p
@@ -220,6 +223,10 @@ export default function Home() {
           Teksty w domenie publicznej: World English Bible (EN) oraz Biblia Gdańska 1632 (PL).
           Kanon 66 ksiąg, 1189 rozdziałów.
         </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <CoffeeLink />
+          <span className="text-xs text-muted-foreground">Aplikacja jest darmowa. Jeśli Ci służy, możesz mnie wesprzeć.</span>
+        </div>
       </main>
     </div>
   );

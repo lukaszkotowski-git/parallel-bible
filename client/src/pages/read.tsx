@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
@@ -17,8 +17,14 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
+import { announceReward } from "@/lib/rewards";
 import {
   addFavorite,
+  addLearnCard,
+  checkVerse,
+  fetchProgress,
+  invalidateLearn,
+  removeLearnCard,
   fetchFavorites,
   fetchMarks,
   fetchReadChapters,
@@ -64,6 +70,9 @@ export default function ReadPage() {
     }
   }, [prevRef?.book, prevRef?.chapter, nextRef?.book, nextRef?.chapter]);
 
+  // Trzymamy postęp w cache'u, żeby po akcji dało się wykryć awans na wyższy poziom.
+  useQuery({ queryKey: qk.progress, queryFn: fetchProgress, enabled: authed });
+
   const { data: marks } = useQuery({
     queryKey: qk.marks(bookId, chapter),
     queryFn: () => fetchMarks(bookId, chapter),
@@ -73,6 +82,11 @@ export default function ReadPage() {
     () => new Map((marks?.highlights ?? []).map((h) => [h.verse, h.color])),
     [marks],
   );
+  const checkByVerse = useMemo(
+    () => new Map((marks?.checks ?? []).map((c) => [c.verse, c.understood])),
+    [marks],
+  );
+  const cardSet = useMemo(() => new Set(marks?.cards ?? []), [marks]);
   const noteByVerse = useMemo(
     () => new Map((marks?.notes ?? []).map((n) => [n.verse, n.text])),
     [marks],
@@ -99,10 +113,21 @@ export default function ReadPage() {
     [readChapters, chapter],
   );
 
+  // Czas spędzony na rozdziale (tylko gdy karta jest widoczna) — serwer na jego podstawie
+  // decyduje, czy czytanie liczy się do serii, celu dziennego i punktów.
+  const secondsRef = useRef(0);
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (document.visibilityState === "visible") secondsRef.current += 1;
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
+
   // Nowy rozdział: zwiń polskie wersety i zapisz ostatnią pozycję czytania.
   // Bez konta nie ma gdzie jej zapisać — samo czytanie działa tak samo.
   useEffect(() => {
     setOpenVerses(new Set());
+    secondsRef.current = 0;
     window.scrollTo({ top: 0 });
     if (bookId && chapter) saveLocalPosition({ bookId, chapter });
     if (authed && bookId && chapter) {
@@ -113,9 +138,14 @@ export default function ReadPage() {
   }, [authed, bookId, chapter]);
 
   const readMutation = useMutation({
-    mutationFn: async ({ mark, ch }: { mark: boolean; ch: number }) =>
-      mark ? markRead(bookId, ch) : unmarkRead(bookId, ch),
-    onSuccess: () => invalidateUserState(),
+    // `seconds` przekazujemy jawnie: mutationFn rusza asynchronicznie, a po „Następny" licznik
+    // czasu zdąży się wyzerować dla nowego rozdziału.
+    mutationFn: async ({ mark, ch, seconds }: { mark: boolean; ch: number; seconds?: number }) =>
+      mark ? markRead(bookId, ch, seconds ?? 0) : unmarkRead(bookId, ch),
+    onSuccess: (res) => {
+      invalidateUserState();
+      if (res) announceReward(res);
+    },
   });
 
   const allOpen = !!data && data.verses.length > 0 && openVerses.size === data.verses.length;
@@ -165,7 +195,7 @@ export default function ReadPage() {
   // a invalidate na końcu uzgadnia z serwerem (także po błędzie).
   const updateMarks = (fn: (m: ChapterMarksDto) => ChapterMarksDto) =>
     queryClient.setQueryData<ChapterMarksDto>(qk.marks(bookId, chapter), (old) =>
-      fn(old ?? { highlights: [], notes: [] }),
+      fn(old ?? { highlights: [], notes: [], checks: [], cards: [] }),
     );
 
   const setHighlight = async (v: number, color: HighlightColor | null) => {
@@ -178,7 +208,7 @@ export default function ReadPage() {
       ],
     }));
     try {
-      await saveHighlight(bookId, chapter, v, color);
+      announceReward(await saveHighlight(bookId, chapter, v, color));
     } catch {
       toast({ title: "Nie udało się zapisać wyróżnienia", variant: "destructive", duration: 4000 });
     }
@@ -196,19 +226,57 @@ export default function ReadPage() {
       ],
     }));
     try {
-      await saveNote(bookId, chapter, v, text);
+      announceReward(await saveNote(bookId, chapter, v, text));
     } catch {
       toast({ title: "Nie udało się zapisać notatki", variant: "destructive", duration: 4000 });
     }
     invalidateMarks();
   };
 
+  /** Odpowiedź po odsłonięciu PL: „zrozumiałem" albo „musiałem sprawdzić" (to drugie dodaje fiszkę). */
+  const answerCheck = async (v: number, understood: boolean) => {
+    updateMarks((m) => ({
+      ...m,
+      checks: [...m.checks.filter((c) => c.verse !== v), { verse: v, understood }],
+      cards: !understood && !m.cards.includes(v) ? [...m.cards, v] : m.cards,
+    }));
+    try {
+      const res = await checkVerse({ bookId, chapter, verse: v }, understood);
+      announceReward(res);
+      if (res.addedToDeck) toast({ title: "Dodano do powtórek", description: `Werset ${v} wróci w trybie nauki.`, duration: 3000 });
+    } catch {
+      toast({ title: "Nie udało się zapisać odpowiedzi", variant: "destructive", duration: 4000 });
+    }
+    invalidateLearn();
+  };
+
+  const toggleCard = async (v: number) => {
+    if (!authed) return promptLogin("Powtórki");
+    const inDeck = cardSet.has(v);
+    updateMarks((m) => ({ ...m, cards: inDeck ? m.cards.filter((x) => x !== v) : [...m.cards, v] }));
+    try {
+      if (inDeck) await removeLearnCard({ bookId, chapter, verse: v });
+      else announceReward(await addLearnCard({ bookId, chapter, verse: v }));
+    } catch {
+      toast({ title: "Nie udało się zapisać", variant: "destructive", duration: 4000 });
+    }
+    invalidateLearn();
+  };
+
   /** Auto-zapis postępu: krótki popup (2 s) z możliwością cofnięcia, zawsze da się zamknąć krzyżykiem. */
-  const saveProgress = (ch: number, description: string) => {
-    readMutation.mutate({ mark: true, ch });
+  const saveProgress = async (ch: number, description: string) => {
+    let counted = true;
+    try {
+      const res = await readMutation.mutateAsync({ mark: true, ch, seconds: secondsRef.current });
+      if (res && "counted" in res) counted = res.counted;
+    } catch {
+      toast({ title: "Nie udało się zapisać postępu", variant: "destructive", duration: 4000 });
+      return;
+    }
     toast({
       title: "Zapisano postęp",
-      description,
+      // Krótkie „odhaczenie" zapisuje postęp, ale nie liczy się do serii i punktów.
+      description: counted ? description : `${description} Zbyt krótko, by liczyło się do serii i punktów.`,
       duration: 2000,
       action: (
         <ToastAction
@@ -346,6 +414,9 @@ export default function ReadPage() {
                   note={noteByVerse.get(verse.v)}
                   onToggle={() => toggleVerse(verse.v)}
                   onToggleFavorite={() => toggleFavorite(verse.v)}
+                  learn={authed ? { checked: checkByVerse.get(verse.v), inDeck: cardSet.has(verse.v) } : undefined}
+                  onCheck={(u) => answerCheck(verse.v, u)}
+                  onToggleCard={() => toggleCard(verse.v)}
                   onHighlight={(c) => setHighlight(verse.v, c)}
                   onSaveNote={(t) => setNote(verse.v, t)}
                 />

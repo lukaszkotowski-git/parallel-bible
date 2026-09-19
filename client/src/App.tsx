@@ -7,6 +7,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Home from "@/pages/home";
 import BookPage from "@/pages/book";
 import ReadPage from "@/pages/read";
+import AdminPage from "@/pages/admin";
+import BadgesPage from "@/pages/badges";
+import LeaderboardPage from "@/pages/leaderboard";
+import LearnPage from "@/pages/learn";
+import { GroupDetailPage, GroupJoinPage, GroupsPage } from "@/pages/groups";
 import PlansPage from "@/pages/plans";
 import StatsPage from "@/pages/stats";
 import NotesPage from "@/pages/notes";
@@ -55,6 +60,13 @@ function AppRouter() {
       <Route path="/plany" component={PlansPage} />
       <Route path="/statystyki" component={StatsPage} />
       <Route path="/notatki" component={NotesPage} />
+      <Route path="/odznaki" component={BadgesPage} />
+      <Route path="/nauka" component={LearnPage} />
+      <Route path="/ranking" component={LeaderboardPage} />
+      <Route path="/grupy" component={GroupsPage} />
+      <Route path="/grupy/dolacz/:code" component={GroupJoinPage} />
+      <Route path="/grupy/:id" component={GroupDetailPage} />
+      <Route path="/admin" component={AdminPage} />
       <Route path="/ksiega/:book" component={BookPage} />
       <Route path="/czytaj/:book/:chapter" component={ReadPage} />
       <Route component={NotFound} />

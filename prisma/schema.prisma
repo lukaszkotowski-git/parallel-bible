@@ -72,22 +72,31 @@ model ChapterSummary {
 // ich nazw. `theme` to pole aplikacji, zadeklarowane jako additionalField w server/auth.ts.
 
 model User {
-  id            String           @id @default(cuid())
-  email         String           @unique
-  emailVerified Boolean          @default(false)
-  name          String
-  image         String?
-  theme         String           @default("light") // preferencja czytania: "light" | "dark"
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-  sessions      Session[]
-  accounts      Account[]
-  readChapters  ReadChapter[]
-  favorites     Favorite[]
-  position      ReadingPosition?
-  highlights    Highlight[]
-  verseNotes    VerseNote[]
-  plans         ReadingPlan[]
+  id                String           @id @default(cuid())
+  email             String           @unique
+  emailVerified     Boolean          @default(false)
+  name              String
+  image             String?
+  theme             String           @default("light") // preferencja czytania: "light" | "dark"
+  showOnLeaderboard Boolean          @default(false) // zgoda na pokazanie imienia w rankingu; domyślnie wyłączona
+  role              String           @default("user") // "user" | "admin" — nadawane z ADMIN_EMAILS albo w panelu admina
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  sessions          Session[]
+  accounts          Account[]
+  readChapters      ReadChapter[]
+  favorites         Favorite[]
+  position          ReadingPosition?
+  highlights        Highlight[]
+  verseNotes        VerseNote[]
+  plans             ReadingPlan[]
+  goal              UserGoal?
+  badges            UserBadge[]
+  streakRestores    StreakRestore[]
+  learnCards        LearnCard[]
+  verseChecks       VerseCheck[]
+  memberships       GroupMember[]
+  ownedGroups       Group[]          @relation("GroupOwner")
 
   @@map("users")
 }
@@ -146,6 +155,8 @@ model ReadChapter {
   bookId  String
   chapter Int
   readAt  DateTime @default(now())
+  // false = oznaczone zbiorczo albo zbyt szybko — liczy się do postępu, ale nie do serii, celu dziennego i XP.
+  counted Boolean  @default(true)
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, bookId, chapter])
@@ -223,4 +234,104 @@ model ReadingPlan {
 
   @@index([userId])
   @@map("reading_plans")
+}
+
+// ---- gamifikacja ----
+// XP, poziomy i postęp odznak są zawsze WYLICZANE z danych (ReadChapter, notatki, karty…),
+// więc nie ma stanu, który mógłby się rozjechać. W bazie trzymamy tylko to, czego nie da się
+// odtworzyć: cel dzienny, przyznane odznaki i przywrócenia serii.
+
+model UserGoal {
+  userId        String   @id
+  dailyChapters Int      @default(1)
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_goals")
+}
+
+model UserBadge {
+  userId   String
+  badgeId  String // klucz z shared/gamification.ts
+  earnedAt DateTime @default(now())
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, badgeId])
+  @@map("user_badges")
+}
+
+// Dzień (YYYY-MM-DD w strefie użytkownika) „uratowany" przywróceniem serii. Max raz na 30 dni.
+model StreakRestore {
+  userId    String
+  day       String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, day])
+  @@map("streak_restores")
+}
+
+// Fiszka do nauki: werset EN → przypomnij sobie PL. System pudełek (Leitner), patrz server/learn.ts.
+model LearnCard {
+  userId    String
+  bookId    String
+  chapter   Int
+  verse     Int
+  box       Int      @default(1) // 1–5
+  reps      Int      @default(0)
+  mastered  Boolean  @default(false) // „umiem"
+  dueAt     DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, bookId, chapter, verse])
+  @@index([userId, dueAt])
+  @@map("learn_cards")
+}
+
+// Odpowiedź „zrozumiałem po angielsku / musiałem sprawdzić" po odsłonięciu polskiego werseta.
+// Jedna (ostatnia) odpowiedź na werset — nie da się nabijać punktów klikaniem w kółko.
+model VerseCheck {
+  userId     String
+  bookId     String
+  chapter    Int
+  verse      Int
+  understood Boolean
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, bookId, chapter, verse])
+  @@map("verse_checks")
+}
+
+// Grupa czytelnicza. Wspólny plan to tylko konfiguracja (jak ReadingPlan); postęp każdego
+// członka wynika z jego ReadChapter, a grupa widzi wyłącznie „czy dziś czytał" i „czy na bieżąco".
+model Group {
+  id            String        @id @default(cuid())
+  name          String
+  description   String?
+  inviteCode    String        @unique
+  ownerId       String
+  planName      String?
+  planBooks     String[]
+  planDays      Int?
+  planStartedAt DateTime?
+  createdAt     DateTime      @default(now())
+  owner         User          @relation("GroupOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members       GroupMember[]
+
+  @@map("groups")
+}
+
+model GroupMember {
+  groupId  String
+  userId   String
+  joinedAt DateTime @default(now())
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, userId])
+  @@index([userId])
+  @@map("group_members")
 }

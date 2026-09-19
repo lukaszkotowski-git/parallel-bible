@@ -28,6 +28,30 @@ if (isProd && !secret) {
 const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } = process.env;
 export const googleEnabled = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
 
+// Administratorzy z ADMIN_EMAILS (lista po przecinku). To tylko sposób nadania pierwszej roli —
+// dalej role zmienia się w panelu admina.
+const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
+
+/**
+ * Nadaje rolę admina kontom z ADMIN_EMAILS. Gdy działa wysyłka maili, wymagamy potwierdzonego
+ * adresu — inaczej ktoś mógłby zarejestrować cudzy adres z listy, zanim zrobi to właściciel.
+ * Wołane przy starcie i po każdej rejestracji/aktualizacji konta (np. potwierdzeniu e-maila).
+ */
+export async function promoteConfiguredAdmins() {
+  if (adminEmails.length === 0) return;
+  await prisma.user.updateMany({
+    where: {
+      email: { in: adminEmails, mode: "insensitive" },
+      role: { not: "admin" },
+      ...(mailEnabled ? { emailVerified: true } : {}),
+    },
+    data: { role: "admin" },
+  });
+}
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   secret: secret ?? "dev-only-niebezpieczny-sekret-zmien-w-produkcji",
@@ -50,8 +74,9 @@ export const auth = betterAuth({
   },
   emailVerification: {
     sendOnSignUp: true,
-    // Konto sprzed włączenia SMTP jest niepotwierdzone — przy próbie logowania dostaje świeży link.
-    sendOnSignIn: true,
+    // Świeży link przy próbie logowania na niepotwierdzone konto wysyła klient (login.tsx),
+    // bo tylko on zna właściwy callbackURL.
+    sendOnSignIn: false,
     autoSignInAfterVerification: true,
     expiresIn: 60 * 60,
     sendVerificationEmail: async ({ user, url }) => {
@@ -67,6 +92,14 @@ export const auth = betterAuth({
     additionalFields: {
       // Motyw zmienia się przez /api/me/theme, nie przez update konta.
       theme: { type: "string", required: false, defaultValue: "light", input: false },
+      // Rolę nadaje wyłącznie serwer (ADMIN_EMAILS / panel admina) — nigdy klient.
+      role: { type: "string", required: false, defaultValue: "user", input: false },
+    },
+  },
+  databaseHooks: {
+    user: {
+      create: { after: async () => void (await promoteConfiguredAdmins().catch(logPromoteError)) },
+      update: { after: async () => void (await promoteConfiguredAdmins().catch(logPromoteError)) },
     },
   },
   session: {
@@ -82,6 +115,8 @@ export const auth = betterAuth({
   },
 });
 
+const logPromoteError = (err: unknown) => console.error("Nie udało się nadać roli admina:", err);
+
 /**
  * Bramka dla /api/me/* — jedyne miejsce, które ustala tożsamość żądania.
  * Handlery tras pozostają bez zmian: czytają ją przez `getUserId(req)`.
@@ -92,6 +127,23 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     if (!session) {
       return res.status(401).json({ message: "Zaloguj się, aby zapisywać postęp" });
     }
+    req.userId = session.user.id;
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Bramka dla /api/admin/* — sesja + rola admina odczytana z bazy przy KAŻDYM żądaniu
+ * (nie z ciasteczka), więc odebranie roli działa natychmiast.
+ */
+export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  try {
+    const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+    if (!session) return res.status(401).json({ message: "Zaloguj się" });
+    const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { role: true } });
+    if (user?.role !== "admin") return res.status(403).json({ message: "Brak uprawnień" });
     req.userId = session.user.id;
     next();
   } catch (err) {

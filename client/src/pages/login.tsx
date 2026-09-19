@@ -11,7 +11,7 @@ import {
   RESET_REDIRECT_URL,
   VERIFIED_CALLBACK_URL,
   authClient,
-  fetchAuthConfig,
+  useAppConfig,
   signIn,
   signUp,
 } from "@/lib/auth";
@@ -56,7 +56,7 @@ export default function LoginPage() {
     return () => clearTimeout(t);
   }, [cooldown]);
 
-  const { data: config } = useQuery({ queryKey: ["auth-config"], queryFn: fetchAuthConfig });
+  const { data: config } = useAppConfig();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,12 +76,15 @@ export default function LoginPage() {
 
     const res =
       mode === "login"
-        ? await signIn.email({ email, password, callbackURL: VERIFIED_CALLBACK_URL })
+        ? // Bez callbackURL: Better Auth przekierowałby po zalogowaniu na ten adres
+          // (i pokazał fałszywy toast „potwierdzono"). Link weryfikacyjny wysyłamy niżej ręcznie.
+          await signIn.email({ email, password })
         : await signUp.email({
             email,
             password,
             name: name.trim() || email.split("@")[0],
-            callbackURL: VERIFIED_CALLBACK_URL,
+            // Adres z ?verified=1 ma sens tylko, gdy serwer faktycznie wysyła link z maila.
+            ...(config?.mail ? { callbackURL: VERIFIED_CALLBACK_URL } : {}),
           });
     setBusy(false);
 
@@ -89,7 +92,11 @@ export default function LoginPage() {
       const unverified = res.error.status === 403 || res.error.code === "EMAIL_NOT_VERIFIED";
       setNeedsVerification(unverified);
       setError(translateError(unverified ? "not verified" : res.error.message));
-      if (unverified) setCooldown(RESEND_COOLDOWN_S);
+      if (unverified) {
+        setCooldown(RESEND_COOLDOWN_S);
+        // Konto sprzed włączenia SMTP albo niedokończona rejestracja — od razu dostaje świeży link.
+        await authClient.sendVerificationEmail({ email, callbackURL: VERIFIED_CALLBACK_URL });
+      }
       return;
     }
     // Serwer z wymogiem potwierdzenia nie zakłada sesji — brak tokenu = czekamy na link z maila.

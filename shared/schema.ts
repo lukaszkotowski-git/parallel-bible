@@ -65,6 +65,7 @@ export interface UserStateDto {
   percent: number; // 0–100, zaokrąglone do 1 miejsca
   favoritesCount: number;
   theme: "light" | "dark";
+  role: "user" | "admin";
 }
 
 export interface FavoriteDto {
@@ -120,6 +121,10 @@ export interface VerseNoteDto {
 export interface ChapterMarksDto {
   highlights: HighlightDto[];
   notes: VerseNoteDto[];
+  /** Odpowiedzi „zrozumiałem po angielsku / musiałem sprawdzić" (tryb nauki). */
+  checks: { verse: number; understood: boolean }[];
+  /** Numery wersetów tego rozdziału, które są w talii fiszek. */
+  cards: number[];
 }
 
 const verseRefSchema = chapterRefSchema.extend({ verse: z.number().int().positive() });
@@ -192,3 +197,40 @@ export interface StatsDto {
   /** Księga → numery przeczytanych rozdziałów (mapa cieplna 66 ksiąg). */
   byBook: Record<string, number[]>;
 }
+
+// ---- panel administratora ----
+
+export const USER_ROLES = ["user", "admin"] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+/** Wiersz listy użytkowników. Tylko liczniki — treść notatek i ulubionych jest prywatna. */
+export interface AdminUserDto {
+  id: string;
+  name: string;
+  email: string;
+  emailVerified: boolean;
+  role: UserRole;
+  createdAt: string;
+  /** Ostatnia aktywność: późniejsza z ostatniej sesji i ostatniego oznaczenia rozdziału. */
+  lastActiveAt: string | null;
+  /** "credential" (e-mail+hasło) i/lub "google". */
+  providers: string[];
+  counts: { read: number; favorites: number; notes: number; highlights: number; plans: number };
+}
+
+/** GET /api/admin/users */
+export interface AdminUsersDto {
+  users: AdminUserDto[];
+  total: number;
+  page: number;
+  pageSize: number;
+  summary: { total: number; verified: number; admins: number; newLast7d: number; activeLast7d: number };
+}
+
+export const adminUserPatchSchema = z
+  .object({
+    role: z.enum(USER_ROLES).optional(),
+    emailVerified: z.boolean().optional(),
+  })
+  .refine((v) => v.role !== undefined || v.emailVerified !== undefined, "Pusta zmiana");
+export type AdminUserPatch = z.infer<typeof adminUserPatchSchema>;

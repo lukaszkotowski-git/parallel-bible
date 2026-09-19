@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { createPlan, deletePlan, fetchPlans, qk, type PlanDto } from "@/lib/api";
 import { chapterHref, chapterLabel, plural } from "@/lib/format";
 import { queryClient } from "@/lib/queryClient";
+import { announceReward } from "@/lib/rewards";
 import { BOOKS } from "@shared/books";
 import { PLAN_TEMPLATES, planChapters } from "@shared/plans";
 
@@ -125,7 +126,8 @@ function NewPlanDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
 
   const create = useMutation({
     mutationFn: createPlan,
-    onSuccess: () => {
+    onSuccess: (reward) => {
+      announceReward(reward);
       queryClientInvalidate();
       onOpenChange(false);
       toast({ title: "Plan utworzony", duration: 3000 });
