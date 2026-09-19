@@ -2,35 +2,16 @@ import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "node:fs/promises";
 
-// server deps to bundle to reduce openat(2) syscalls
-// which helps cold start times
+// Zależności serwera wciągane do bundla (mniej openat(2) → szybszy cold start).
+// Tylko pakiety, które serwer faktycznie importuje: reszta zostaje zewnętrznym require().
+// Nowa zależność runtime'owa, która ma trafić do bundla, musi się tu znaleźć.
 const allowlist = [
-  "@google/generative-ai",
-  "axios",
   // better-auth jest ESM-only — jako external `require()` z bundla CJS bywa
   // zawodny, więc wciągamy go do bundla razem z zależnościami przechodnimi.
   "better-auth",
-  "cors",
-  "date-fns",
-  "drizzle-orm",
-  "drizzle-zod",
   "express",
-  "express-rate-limit",
-  "express-session",
-  "jsonwebtoken",
-  "memorystore",
-  "multer",
   "nanoid",
-  "nodemailer",
-  "openai",
-  "passport",
-  "passport-local",
-  "stripe",
-  "uuid",
-  "ws",
-  "xlsx",
   "zod",
-  "zod-validation-error",
 ];
 
 async function buildAll() {

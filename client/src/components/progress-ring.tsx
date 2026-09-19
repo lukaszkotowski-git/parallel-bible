@@ -29,7 +29,7 @@ export function ProgressRing({
       aria-label={label ?? `Przeczytane ${clamped}% Biblii`}
       data-testid="progress-ring"
     >
-      <svg width={size} height={size} className="-rotate-90">
+      <svg width={size} height={size} className="-rotate-90" aria-hidden="true">
         <circle
           cx={size / 2}
           cy={size / 2}

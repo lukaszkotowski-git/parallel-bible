@@ -8,10 +8,12 @@
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
+    "lint": "biome lint --diagnostic-level=error",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
-    "import:bible": "tsx scripts/import-bible.ts"
+    "import:bible": "tsx scripts/import-bible.ts",
+    "import:commentary": "tsx scripts/import-commentary.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
@@ -66,6 +68,7 @@
     "zod-validation-error": "^5.0.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.14",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.1.18",
     "@types/express": "^5.0.0",

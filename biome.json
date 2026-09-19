@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "files": {
+    "includes": ["client/src/**/*.ts", "client/src/**/*.tsx", "server/**", "shared/**", "scripts/**", "script/**", "!client/src/components/ui"]
+  },
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "suspicious": { "noExplicitAny": "off", "noArrayIndexKey": "off" },
+      "style": { "noNonNullAssertion": "off" },
+      "correctness": { "useExhaustiveDependencies": "warn" }
+    }
+  }
+}

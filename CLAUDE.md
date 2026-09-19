@@ -15,6 +15,7 @@ npm run dev             # dev server (tsx, hot reload) — http://localhost:5000
 npm run build           # production build: vite build (client) + esbuild bundle (server) → dist/
 npm run start           # run production build (NODE_ENV=production node dist/index.cjs)
 npm run check           # tsc type-check (noEmit)
+npm run lint            # Biome lint (errors fail; warnings are informational)
 
 npx prisma generate     # regenerate Prisma client after schema.prisma changes
 npm run db:migrate:dev  # create/apply a dev migration (prisma migrate dev)
@@ -22,8 +23,9 @@ npm run db:migrate      # apply migrations in production (prisma migrate deploy)
 npm run import:bible    # import WEB + BG verse text into the database (idempotent, ~1 min)
 ```
 
-There is no lint script and no test suite configured — `npm run check` (tsc) is the only
-automated correctness gate. Always run it after non-trivial TypeScript changes.
+There is no test suite configured. `npm run check` (tsc) is the main correctness gate — always run
+it after non-trivial TypeScript changes; `npm run lint` (Biome, errors only; `components/ui/` and CSS
+are excluded) catches a11y and hook mistakes.
 
 Local setup: `cp .env.example .env` (set `DATABASE_URL` for a local Postgres 16 and
 `BETTER_AUTH_SECRET`), then
@@ -96,8 +98,7 @@ invalidating query keys ad hoc.
 **Build** (`script/build.ts`): builds the client with Vite, then bundles the server with esbuild
 into a single `dist/index.cjs` (CJS, minified). Only dependencies in the `allowlist` array get
 bundled into the server output; everything else in `package.json` is left as an external
-`require()`. Note the allowlist currently includes packages not used in this project (e.g.
-`drizzle-orm`, `openai`, `stripe`) — carried over from a template; if you add a new server-side
+`require()`. The allowlist lists only packages the server actually imports (`better-auth`, `express`, `nanoid`, `zod`); if you add a new server-side
 runtime dependency that should be bundled, add it to this allowlist or the production build will
 fail to find it at runtime.
 
