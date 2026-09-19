@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { AppHeader, useAuthed } from "@/components/app-header";
 import { ChapterCommentary } from "@/components/chapter-commentary";
+import { SupportNudge } from "@/components/support-nudge";
 import { ReadingSettingsPopover } from "@/components/reading-settings-popover";
 import { VerseRow } from "@/components/verse-row";
 import { Button } from "@/components/ui/button";
@@ -54,6 +55,8 @@ export default function ReadPage() {
   const { authed } = useAuthed();
 
   const [openVerses, setOpenVerses] = useState<Set<number>>(new Set());
+  // Okno „jak Ci się podoba aplikacja?" — pokazuje je serwer w odpowiedzi na zapis rozdziału.
+  const [nudge, setNudge] = useState<{ chapters: number } | null>(null);
 
   const { data, isLoading, isError, error, refetch } = useQuery<ChapterDto>({
     queryKey: qk.chapter(bookId, chapter),
@@ -144,7 +147,10 @@ export default function ReadPage() {
       mark ? markRead(bookId, ch, seconds ?? 0) : unmarkRead(bookId, ch),
     onSuccess: (res) => {
       invalidateUserState();
-      if (res) announceReward(res);
+      if (res) {
+        announceReward(res);
+        if ("nudge" in res && res.nudge) setNudge(res.nudge);
+      }
     },
   });
 
@@ -331,6 +337,7 @@ export default function ReadPage() {
   return (
     <div className="relative z-10 min-h-screen pb-28 sm:pb-12">
       <AppHeader />
+      {nudge && <SupportNudge chapters={nudge.chapters} onClose={() => setNudge(null)} />}
 
       <main
         id="main"

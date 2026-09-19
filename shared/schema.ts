@@ -234,3 +234,15 @@ export const adminUserPatchSchema = z
   })
   .refine((v) => v.role !== undefined || v.emailVerified !== undefined, "Pusta zmiana");
 export type AdminUserPatch = z.infer<typeof adminUserPatchSchema>;
+
+/** Dane do dobrowolnego wsparcia (GET /api/config). Numery są same cyframi — formatowanie robi klient. */
+export interface SupportConfig {
+  /** Numer telefonu do BLIK na telefon (9 cyfr) albo null. */
+  phone: string | null;
+  /** Numer rachunku (26 cyfr bez „PL") albo null. */
+  account: string | null;
+  /** Tytuł przelewu do skopiowania. */
+  title: string;
+  /** Nazwa odbiorcy (opcjonalnie). */
+  recipient: string | null;
+}

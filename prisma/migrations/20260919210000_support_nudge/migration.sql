@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "users" ADD COLUMN     "nudgeAt" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "nudgeRare" BOOLEAN NOT NULL DEFAULT false;
+

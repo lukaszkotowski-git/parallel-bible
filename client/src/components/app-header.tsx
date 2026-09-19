@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Award, BarChart3, CalendarCheck, Coffee, Layers, LogIn, Trophy, Users, ShieldCheck, LogOut, Moon, StickyNote, Sun } from "lucide-react";
+import { Award, BarChart3, CalendarCheck, Layers, LogIn, Trophy, Users, ShieldCheck, LogOut, Moon, StickyNote, Sun } from "lucide-react";
 import { Brand } from "@/components/brand";
+import { SupportButton } from "@/components/support-dialog";
 import { ProgressRing } from "@/components/progress-ring";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +17,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { clearUserState, qk, saveTheme, type UserStateDto } from "@/lib/api";
-import { signOut, useAppConfig, useSession } from "@/lib/auth";
+import { signOut, useSession } from "@/lib/auth";
 import { queryClient } from "@/lib/queryClient";
 
 /**
@@ -91,7 +92,6 @@ function initials(nameOrEmail: string) {
 
 function AccountMenu() {
   const { user } = useAuthed();
-  const { data: config } = useAppConfig();
   const { data: state } = useUserState();
   if (!user) return null;
 
@@ -135,13 +135,6 @@ function AccountMenu() {
         <DropdownMenuItem asChild>
           <Link href="/notatki" data-testid="link-notes"><StickyNote className="mr-2 h-4 w-4" /> Moje notatki</Link>
         </DropdownMenuItem>
-        {config?.coffeeUrl && (
-          <DropdownMenuItem asChild>
-            <a href={config.coffeeUrl} target="_blank" rel="noopener noreferrer" data-testid="link-coffee-menu">
-              <Coffee className="mr-2 h-4 w-4" /> Postaw mi kawę
-            </a>
-          </DropdownMenuItem>
-        )}
         {state?.role === "admin" && (
           <DropdownMenuItem asChild>
             <Link href="/admin" data-testid="link-admin"><ShieldCheck className="mr-2 h-4 w-4" /> Panel administratora</Link>
@@ -188,6 +181,8 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           </TooltipTrigger>
           <TooltipContent>Tryb {theme === "dark" ? "jasny" : "ciemny"}</TooltipContent>
         </Tooltip>
+
+        <SupportButton variant="icon" />
 
         {/* Ranking widoczny dla każdego; bez konta strona pokaże zaproszenie do logowania. */}
         <Tooltip>

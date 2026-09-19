@@ -5,6 +5,7 @@ import { getUserId } from "./db";
 import { googleEnabled, requireAdmin, requireAuth } from "./auth";
 import { mailEnabled } from "./mail";
 import { getBadges, getProgress, recordRead, restoreStreak, setGoal, syncBadges } from "./gamification";
+import { nudgeAnswered, nudgeDue } from "./nudge";
 import { getLeaderboard, setLeaderboardOptIn } from "./leaderboard";
 import { addCard, checkVerse, getLearn, removeCard, reviewCard, setMastered, verseOfDay } from "./learn";
 import {
@@ -28,6 +29,7 @@ import {
   themeSchema,
 } from "@shared/schema";
 import { safeTimeZone } from "@shared/plans";
+import type { SupportConfig } from "@shared/schema";
 import {
   checkInputSchema,
   goalInputSchema,
@@ -54,20 +56,25 @@ function asyncHandler(fn: (req: Request, res: Response) => Promise<unknown>) {
 }
 
 /**
- * „Postaw mi kawę": BUYMEACOFFEE_URL to pełny adres (https://buymeacoffee.com/nazwa) albo sama
- * nazwa użytkownika. Przyjmujemy wyłącznie https — wartość trafia do linku w interfejsie.
- * Bez zmiennej przycisku po prostu nie ma.
+ * Dobrowolne wsparcie (BLIK na telefon / przelew na konto). Dane pochodzą wyłącznie ze
+ * środowiska: SUPPORT_BLIK_PHONE, SUPPORT_ACCOUNT_NUMBER, SUPPORT_TRANSFER_TITLE,
+ * SUPPORT_RECIPIENT. Bez telefonu i numeru konta przycisk „Wesprzyj" w ogóle się nie pokazuje.
+ * Wartości są oczyszczane, bo trafiają do interfejsu i schowka użytkowników.
  */
-function coffeeUrl(): string | null {
-  const raw = (process.env.BUYMEACOFFEE_URL ?? "").trim();
-  if (!raw) return null;
-  const candidate = /^https?:\/\//i.test(raw) ? raw : `https://buymeacoffee.com/${raw.replace(/^@/, "").replace(/\//g, "")}`;
-  try {
-    const url = new URL(candidate);
-    return url.protocol === "https:" ? url.toString() : null;
-  } catch {
-    return null;
-  }
+function supportConfig(): SupportConfig | null {
+  const digits = (v?: string) => (v ?? "").replace(/[^\d]/g, "");
+  const text = (v: string | undefined, max: number) =>
+    (v ?? "").replace(/[\r\n\t<>]/g, " ").trim().slice(0, max);
+
+  const phone = digits(process.env.SUPPORT_BLIK_PHONE).slice(-9); // BLIK na telefon: 9 cyfr, bez +48
+  const account = digits((process.env.SUPPORT_ACCOUNT_NUMBER ?? "").replace(/^\s*PL/i, ""));
+  if (!phone && !account) return null;
+  return {
+    phone: phone || null,
+    account: account || null,
+    title: text(process.env.SUPPORT_TRANSFER_TITLE, 140) || "Darowizna na rozwój Parallel Bible",
+    recipient: text(process.env.SUPPORT_RECIPIENT, 70) || null,
+  };
 }
 
 /** Strefa użytkownika: z ?tz= albo nagłówka X-Timezone (klient dokłada go do każdego żądania). */
@@ -104,7 +111,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   );
 
   // Co klient ma pokazać na ekranie logowania (publiczne, bez sesji).
-  app.get("/api/config", (_req, res) => res.json({ google: googleEnabled, mail: mailEnabled, coffeeUrl: coffeeUrl() }));
+  app.get("/api/config", (_req, res) => res.json({ google: googleEnabled, mail: mailEnabled, support: supportConfig() }));
 
   // ---- stan użytkownika ----
   // Jedna bramka na cały prefiks: bez sesji te trasy zwracają 401, a handlery
@@ -148,7 +155,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!parsed.success) return res.status(400).json({ message: "Nieprawidłowe dane" });
       const userId = await getUserId(req);
       const counted = await recordRead(userId, parsed.data.bookId, parsed.data.chapter, parsed.data.seconds ?? 0);
-      res.json({ ok: true, counted, ...(await syncBadges(userId, tzOf(req))) });
+      res.json({
+        ok: true,
+        counted,
+        // Gdy pora zapytać „jak Ci się podoba aplikacja?" (co 15 rozdziałów, co 77 przy rzadszym trybie).
+        nudge: counted ? await nudgeDue(userId) : null,
+        ...(await syncBadges(userId, tzOf(req))),
+      });
     }),
   );
 
@@ -330,6 +343,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const parsed = leaderboardOptSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Nieprawidłowe dane" });
       await setLeaderboardOptIn(await getUserId(req), parsed.data.show);
+      res.json({ ok: true });
+    }),
+  );
+
+  app.put(
+    "/api/me/nudge",
+    asyncHandler(async (req, res) => {
+      const parsed = z.object({ rare: z.boolean() }).safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Nieprawidłowe dane" });
+      await nudgeAnswered(await getUserId(req), parsed.data.rare);
       res.json({ ok: true });
     }),
   );

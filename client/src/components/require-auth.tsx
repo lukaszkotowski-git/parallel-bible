@@ -10,7 +10,7 @@ export function RequireAuth({ what, children }: { what: string; children: React.
   if (!authed) {
     return (
       <div className="mt-10 rounded-xl border border-dashed border-border bg-muted/40 p-8 text-center">
-        <p className="text-sm text-muted-foreground">{what} wymagają konta — czytanie nadal jest publiczne.</p>
+        <p className="text-sm text-muted-foreground">{what} wymaga konta — czytanie nadal jest publiczne.</p>
         <Button asChild className="mt-4">
           <Link href="/login">Zaloguj się</Link>
         </Button>

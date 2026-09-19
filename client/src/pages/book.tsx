@@ -4,6 +4,7 @@ import { ArrowLeft, Check, CheckCheck, RotateCcw } from "lucide-react";
 import { AppHeader, useAuthed, useUserState } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SupportButton } from "@/components/support-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { announceReward } from "@/lib/rewards";
 import { fetchReadChapters, invalidateUserState, qk, setBookRead, type BookDto } from "@/lib/api";
@@ -136,6 +137,12 @@ export default function BookPage() {
                   </Link>
                 );
               })}
+            </div>
+
+            {/* Ten sam przycisk co na stronie głównej; sam się ukrywa, gdy nie skonfigurowano numerów. */}
+            <div className="mt-10 flex flex-wrap items-center gap-3 border-t border-border pt-6">
+              <SupportButton variant="pill" />
+              <span className="text-xs text-muted-foreground">Aplikacja jest darmowa. Jeśli Ci służy, możesz dobrowolnie ją wesprzeć.</span>
             </div>
           </>
         )}

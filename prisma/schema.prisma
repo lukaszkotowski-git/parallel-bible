@@ -79,6 +79,10 @@ model User {
   image             String?
   theme             String           @default("light") // preferencja czytania: "light" | "dark"
   showOnLeaderboard Boolean          @default(false) // zgoda na pokazanie imienia w rankingu; domyślnie wyłączona
+  // Pytanie „jak Ci się podoba aplikacja" (zachęta do wsparcia): przy ilu przeczytanych rozdziałach
+  // ostatnio je pokazano i czy użytkownik wybrał rzadsze przypominanie (co 77 zamiast co 15).
+  nudgeAt           Int              @default(0)
+  nudgeRare         Boolean          @default(false)
   role              String           @default("user") // "user" | "admin" — nadawane z ADMIN_EMAILS albo w panelu admina
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt

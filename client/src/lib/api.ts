@@ -143,6 +143,8 @@ export const fetchBadges = () => json<BadgesDto>("GET", "/api/me/badges");
 export const saveGoal = (dailyChapters: number) => json<{ ok: true }>("PUT", "/api/me/goal", { dailyChapters });
 export const restoreStreak = (day: string) => json<{ ok: true }>("POST", "/api/me/streak/restore", { day });
 
+/** Zapisuje, że zapytano o opinię (odpowiedź lub zamknięcie); `rare` = następne pytanie dopiero za 77 rozdziałów. */
+export const answerNudge = (rare: boolean) => json<{ ok: true }>("PUT", "/api/me/nudge", { rare });
 export const fetchLeaderboard = () => json<LeaderboardDto>("GET", "/api/me/leaderboard");
 export const setLeaderboardOptIn = (show: boolean) => json<{ ok: true }>("PUT", "/api/me/leaderboard/opt", { show });
 
@@ -194,7 +196,7 @@ export async function fetchFavorites(book?: string, chapter?: number) {
 /** `seconds` = czas spędzony na rozdziale; serwer na tej podstawie ocenia, czy czytanie „się liczy". */
 export async function markRead(bookId: string, chapter: number, seconds = 0) {
   const res = await apiRequest("POST", "/api/me/read", { bookId, chapter, seconds });
-  return (await res.json()) as RewardDto & { counted: boolean };
+  return (await res.json()) as RewardDto & { counted: boolean; nudge: { chapters: number } | null };
 }
 
 export async function unmarkRead(bookId: string, chapter: number) {

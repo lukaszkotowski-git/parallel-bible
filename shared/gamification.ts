@@ -370,3 +370,9 @@ export interface LeaderboardDto {
 }
 
 export const leaderboardOptSchema = z.object({ show: z.boolean() });
+
+// ---------- zachęta do wsparcia ----------
+
+/** Pytanie „jak Ci się podoba aplikacja?" wraca co tyle przeczytanych rozdziałów (zwykle / rzadszy tryb). */
+export const NUDGE_EVERY = 15;
+export const NUDGE_EVERY_RARE = 77;
