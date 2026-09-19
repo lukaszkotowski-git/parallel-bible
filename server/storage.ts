@@ -1,10 +1,19 @@
 import { prisma } from "./db";
 import { BOOK_BY_ID } from "@shared/books";
+import { chaptersForDay, currentPlanDay, dayKey, daysBetween, planChapters } from "@shared/plans";
 import type {
   BookDto,
   ChapterDto,
+  ChapterMarksDto,
   FavoriteDto,
   FavoriteInput,
+  HighlightColor,
+  HighlightInput,
+  NoteInput,
+  NoteListItemDto,
+  PlanDto,
+  PlanInput,
+  StatsDto,
   UserStateDto,
 } from "@shared/schema";
 
@@ -23,7 +32,18 @@ export interface IStorage {
   getFavorites(userId: string, bookId?: string, chapter?: number): Promise<FavoriteDto[]>;
   addFavorite(userId: string, input: FavoriteInput): Promise<FavoriteDto>;
   removeFavorite(userId: string, bookId: string, chapter: number, verseFrom: number): Promise<void>;
+  getMarks(userId: string, bookId: string, chapter: number): Promise<ChapterMarksDto>;
+  setHighlight(userId: string, input: HighlightInput): Promise<void>;
+  setNote(userId: string, input: NoteInput): Promise<void>;
+  listNotes(userId: string): Promise<NoteListItemDto[]>;
+  getPlans(userId: string, tz: string): Promise<PlanDto[]>;
+  createPlan(userId: string, input: PlanInput): Promise<void>;
+  deletePlan(userId: string, planId: string): Promise<void>;
+  getStats(userId: string, tz: string): Promise<StatsDto>;
 }
+
+/** Ile dni wstecz zwraca mapa aktywności (26 tygodni = półroczny „kalendarz"). */
+const DAILY_WINDOW_DAYS = 182;
 
 export class DatabaseStorage implements IStorage {
   async getBooks(): Promise<BookDto[]> {
@@ -43,7 +63,7 @@ export class DatabaseStorage implements IStorage {
     const book = await prisma.book.findUnique({ where: { id: bookId } });
     if (!book || chapter < 1 || chapter > book.chapterCount) return null;
 
-    const [verses, translations, books] = await Promise.all([
+    const [verses, translations, books, summary] = await Promise.all([
       prisma.verse.findMany({
         where: { bookId, chapter, translationId: { in: [EN, PL] } },
         orderBy: [{ verse: "asc" }],
@@ -51,6 +71,7 @@ export class DatabaseStorage implements IStorage {
       }),
       prisma.translation.findMany({ where: { id: { in: [EN, PL] } } }),
       prisma.book.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, sortOrder: true, chapterCount: true } }),
+      prisma.chapterSummary.findUnique({ where: { bookId_chapter: { bookId, chapter } } }),
     ]);
 
     const en = new Map<number, string>();
@@ -102,6 +123,7 @@ export class DatabaseStorage implements IStorage {
       },
       verses: parallel,
       extraPl,
+      commentary: summary ? { en: summary.textEn, pl: summary.textPl } : null,
       nav: { prev, next },
       translations: { en: toDto(EN), pl: toDto(PL) },
     };
@@ -217,6 +239,151 @@ export class DatabaseStorage implements IStorage {
 
   async removeFavorite(userId: string, bookId: string, chapter: number, verseFrom: number) {
     await prisma.favorite.deleteMany({ where: { userId, bookId, chapter, verseFrom } });
+  }
+
+  async getMarks(userId: string, bookId: string, chapter: number): Promise<ChapterMarksDto> {
+    const [highlights, notes] = await Promise.all([
+      prisma.highlight.findMany({ where: { userId, bookId, chapter }, orderBy: { verse: "asc" } }),
+      prisma.verseNote.findMany({ where: { userId, bookId, chapter }, orderBy: { verse: "asc" } }),
+    ]);
+    return {
+      highlights: highlights.map((h) => ({ verse: h.verse, color: h.color as HighlightColor })),
+      notes: notes.map((n) => ({ verse: n.verse, text: n.text, updatedAt: n.updatedAt.toISOString() })),
+    };
+  }
+
+  async setHighlight(userId: string, { bookId, chapter, verse, color }: HighlightInput) {
+    if (color === null) {
+      await prisma.highlight.deleteMany({ where: { userId, bookId, chapter, verse } });
+      return;
+    }
+    await prisma.highlight.upsert({
+      where: { userId_bookId_chapter_verse: { userId, bookId, chapter, verse } },
+      update: { color },
+      create: { userId, bookId, chapter, verse, color },
+    });
+  }
+
+  async setNote(userId: string, { bookId, chapter, verse, text }: NoteInput) {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      await prisma.verseNote.deleteMany({ where: { userId, bookId, chapter, verse } });
+      return;
+    }
+    await prisma.verseNote.upsert({
+      where: { userId_bookId_chapter_verse: { userId, bookId, chapter, verse } },
+      update: { text: trimmed },
+      create: { userId, bookId, chapter, verse, text: trimmed },
+    });
+  }
+
+  async listNotes(userId: string): Promise<NoteListItemDto[]> {
+    const rows = await prisma.verseNote.findMany({ where: { userId }, orderBy: { updatedAt: "desc" } });
+    return rows.map((n) => ({
+      bookId: n.bookId,
+      chapter: n.chapter,
+      verse: n.verse,
+      text: n.text,
+      updatedAt: n.updatedAt.toISOString(),
+    }));
+  }
+
+  async getPlans(userId: string, tz: string): Promise<PlanDto[]> {
+    const [plans, read] = await Promise.all([
+      prisma.readingPlan.findMany({ where: { userId }, orderBy: { startedAt: "desc" } }),
+      prisma.readChapter.findMany({ where: { userId }, select: { bookId: true, chapter: true } }),
+    ]);
+    const readSet = new Set(read.map((r) => `${r.bookId}:${r.chapter}`));
+    const isRead = (c: { bookId: string; chapter: number }) => readSet.has(`${c.bookId}:${c.chapter}`);
+    const todayKey = dayKey(new Date(), tz);
+
+    return plans.map((p) => {
+      const chapters = planChapters(p.books);
+      const n = chapters.length;
+      const currentDay = currentPlanDay(dayKey(p.startedAt, tz), todayKey);
+      const overdueUntil = Math.floor((Math.min(currentDay - 1, p.days) * n) / p.days);
+      const finished = currentDay > p.days;
+      const todayChapters = finished ? [] : chaptersForDay(chapters, p.days, currentDay);
+      return {
+        id: p.id,
+        name: p.name,
+        books: p.books,
+        days: p.days,
+        startedAt: p.startedAt.toISOString(),
+        totalChapters: n,
+        readChapters: chapters.filter(isRead).length,
+        currentDay,
+        overdue: chapters.slice(0, overdueUntil).filter((c) => !isRead(c)),
+        today: finished
+          ? null
+          : { day: currentDay, chapters: todayChapters.map((c) => ({ ...c, read: isRead(c) })) },
+        finished,
+      };
+    });
+  }
+
+  async createPlan(userId: string, input: PlanInput) {
+    const total = planChapters(input.books).length;
+    if (input.days > total) throw Object.assign(new Error("Plan ma więcej dni niż rozdziałów"), { status: 400 });
+    await prisma.readingPlan.create({ data: { userId, name: input.name, books: input.books, days: input.days } });
+  }
+
+  async deletePlan(userId: string, planId: string) {
+    await prisma.readingPlan.deleteMany({ where: { userId, id: planId } });
+  }
+
+  async getStats(userId: string, tz: string): Promise<StatsDto> {
+    const [read, readByBook] = await Promise.all([
+      prisma.readChapter.findMany({ where: { userId }, select: { readAt: true } }),
+      prisma.readChapter.findMany({
+        where: { userId },
+        select: { bookId: true, chapter: true },
+        orderBy: { chapter: "asc" },
+      }),
+    ]);
+
+    const perDay = new Map<string, number>();
+    for (const r of read) {
+      const k = dayKey(r.readAt, tz);
+      perDay.set(k, (perDay.get(k) ?? 0) + 1);
+    }
+
+    const todayKey = dayKey(new Date(), tz);
+    const days = [...perDay.keys()].sort();
+
+    let longest = 0;
+    let run = 0;
+    for (let i = 0; i < days.length; i++) {
+      run = i > 0 && daysBetween(days[i - 1]!, days[i]!) === 1 ? run + 1 : 1;
+      longest = Math.max(longest, run);
+    }
+
+    // Seria żyje, jeśli ostatni dzień czytania to dziś albo wczoraj (dziś jeszcze można zdążyć).
+    let current = 0;
+    const last = days[days.length - 1];
+    if (last && daysBetween(last, todayKey) <= 1) {
+      current = 1;
+      for (let i = days.length - 1; i > 0 && daysBetween(days[i - 1]!, days[i]!) === 1; i--) current++;
+    }
+
+    const daily: Record<string, number> = {};
+    for (const [k, n] of perDay) if (daysBetween(k, todayKey) < DAILY_WINDOW_DAYS) daily[k] = n;
+
+    const byBook: Record<string, number[]> = {};
+    for (const r of readByBook) {
+      const list = byBook[r.bookId] ?? [];
+      list.push(r.chapter);
+      byBook[r.bookId] = list;
+    }
+
+    return {
+      currentStreak: current,
+      longestStreak: longest,
+      readToday: perDay.has(todayKey),
+      totalRead: read.length,
+      daily,
+      byBook,
+    };
   }
 }
 

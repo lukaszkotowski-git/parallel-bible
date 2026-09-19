@@ -5,6 +5,7 @@ import { z } from "zod";
 
 export type { BookRef, Testament } from "./books";
 export { BOOKS, BOOK_BY_ID, TOTAL_BOOKS, TOTAL_CHAPTERS } from "./books";
+import { BOOK_BY_ID } from "./books";
 
 /** GET /api/books */
 export interface BookDto {
@@ -41,6 +42,8 @@ export interface ChapterDto {
   verses: ParallelVerse[];
   /** Wersety obecne po polsku, których nie ma w numeracji angielskiej (ogon rozdziału). */
   extraPl: { v: number; pl: string }[];
+  /** Krótkie streszczenie rozdziału (PL/EN), wygenerowane offline. `null` = jeszcze brak. */
+  commentary: { en: string; pl: string } | null;
   nav: { prev: ChapterRef | null; next: ChapterRef | null };
   translations: { en: TranslationDto; pl: TranslationDto };
 }
@@ -90,3 +93,96 @@ export const favoriteInputSchema = chapterRefSchema.extend({
   note: z.string().max(2000).nullable().optional(),
 });
 export type FavoriteInput = z.infer<typeof favoriteInputSchema>;
+
+// ---- wyróżnienia i notatki ----
+
+export const HIGHLIGHT_COLORS = ["yellow", "green", "blue", "pink"] as const;
+export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number];
+
+export interface HighlightDto {
+  verse: number;
+  color: HighlightColor;
+}
+
+export interface VerseNoteDto {
+  verse: number;
+  text: string;
+  updatedAt: string;
+}
+
+/** GET /api/me/marks?book=&chapter= — wszystko, co użytkownik zaznaczył w rozdziale. */
+export interface ChapterMarksDto {
+  highlights: HighlightDto[];
+  notes: VerseNoteDto[];
+}
+
+const verseRefSchema = chapterRefSchema.extend({ verse: z.number().int().positive() });
+
+export const highlightInputSchema = verseRefSchema.extend({
+  /** `null` = zdejmij wyróżnienie. */
+  color: z.enum(HIGHLIGHT_COLORS).nullable(),
+});
+export type HighlightInput = z.infer<typeof highlightInputSchema>;
+
+export const noteInputSchema = verseRefSchema.extend({
+  /** Pusty tekst = usuń notatkę. */
+  text: z.string().max(4000),
+});
+export type NoteInput = z.infer<typeof noteInputSchema>;
+
+/** GET /api/me/notes — lista notatek z całej Biblii (widok „Moje notatki"). */
+export interface NoteListItemDto extends VerseNoteDto {
+  bookId: string;
+  chapter: number;
+}
+
+// ---- plany czytania ----
+
+export const planInputSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  books: z
+    .array(z.string())
+    .min(1)
+    .max(66)
+    .refine((b) => b.every((id) => id in BOOK_BY_ID) && new Set(b).size === b.length, "Nieznana lub powtórzona księga"),
+  days: z.number().int().min(1).max(1500),
+});
+export type PlanInput = z.infer<typeof planInputSchema>;
+
+export interface PlanDayDto {
+  day: number;
+  chapters: { bookId: string; chapter: number; read: boolean }[];
+}
+
+/** GET /api/me/plans — postęp liczony po stronie serwera z ReadChapter. */
+export interface PlanDto {
+  id: string;
+  name: string;
+  books: string[];
+  days: number;
+  startedAt: string;
+  totalChapters: number;
+  readChapters: number;
+  /** Dzień kalendarzowy planu (może przekraczać `days`, gdy plan się skończył). */
+  currentDay: number;
+  /** Rozdziały zaplanowane na dni sprzed dzisiaj, a jeszcze nieprzeczytane (zaległości). */
+  overdue: { bookId: string; chapter: number }[];
+  /** Dzisiejsza porcja (pusta po zakończeniu planu). */
+  today: PlanDayDto | null;
+  finished: boolean;
+}
+
+// ---- statystyki ----
+
+/** GET /api/me/stats */
+export interface StatsDto {
+  currentStreak: number;
+  longestStreak: number;
+  /** Czy dziś (w strefie klienta) coś już przeczytano — do „streak w niebezpieczeństwie". */
+  readToday: boolean;
+  totalRead: number;
+  /** Dzień (YYYY-MM-DD) → liczba rozdziałów oznaczonych jako przeczytane. Ostatnie ~26 tygodni. */
+  daily: Record<string, number>;
+  /** Księga → numery przeczytanych rozdziałów (mapa cieplna 66 ksiąg). */
+  byBook: Record<string, number[]>;
+}

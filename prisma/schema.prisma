@@ -52,6 +52,21 @@ model Verse {
   @@index([bookId, chapter])
 }
 
+// Krótkie streszczenie rozdziału (PL/EN), wygenerowane offline przez skrypt
+// pomocniczy na podstawie rzeczywistego tekstu WEB — patrz scripts/import-commentary.ts.
+// Bez relacji do Book, tak jak ReadChapter/Favorite (bookId to płaski klucz OSIS-like).
+model ChapterSummary {
+  bookId    String
+  chapter   Int
+  textEn    String
+  textPl    String
+  model     String // np. "llama3.1:8b" — do śledzenia, czym wygenerowano
+  updatedAt DateTime @updatedAt
+
+  @@id([bookId, chapter])
+  @@map("chapter_summaries")
+}
+
 // ---- konta i sesje (Better Auth) ----
 // Kształt pól User/Session/Account/Verification narzuca Better Auth — nie zmieniaj
 // ich nazw. `theme` to pole aplikacji, zadeklarowane jako additionalField w server/auth.ts.
@@ -70,6 +85,9 @@ model User {
   readChapters  ReadChapter[]
   favorites     Favorite[]
   position      ReadingPosition?
+  highlights    Highlight[]
+  verseNotes    VerseNote[]
+  plans         ReadingPlan[]
 
   @@map("users")
 }
@@ -158,4 +176,51 @@ model Favorite {
   @@unique([userId, bookId, chapter, verseFrom])
   @@index([userId, bookId, chapter])
   @@map("favorites")
+}
+
+// Kolorowe wyróżnienie pojedynczego wersetu (jeden kolor na werset).
+model Highlight {
+  userId    String
+  bookId    String
+  chapter   Int
+  verse     Int
+  color     String // "yellow" | "green" | "blue" | "pink"
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, bookId, chapter, verse])
+  @@index([userId, bookId, chapter])
+  @@map("highlights")
+}
+
+// Notatka użytkownika do wersetu (osobno od Favorite.note — notatka nie wymaga gwiazdki).
+model VerseNote {
+  userId    String
+  bookId    String
+  chapter   Int
+  verse     Int
+  text      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, bookId, chapter, verse])
+  @@index([userId, bookId, chapter])
+  @@map("verse_notes")
+}
+
+// Plan czytania. Sam plan to tylko konfiguracja (lista ksiąg + liczba dni);
+// rozdziały na każdy dzień wylicza deterministycznie shared/plans.ts, a postęp
+// wynika z ReadChapter — dzięki temu nie ma drugiego źródła prawdy o przeczytanych.
+model ReadingPlan {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  books     String[] // kolejność ksiąg (klucze OSIS-like)
+  days      Int
+  startedAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("reading_plans")
 }

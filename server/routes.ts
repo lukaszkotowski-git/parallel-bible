@@ -3,9 +3,19 @@ import type { Server } from "node:http";
 import { storage } from "./storage";
 import { getUserId } from "./db";
 import { googleEnabled, requireAuth } from "./auth";
-import { chapterRefSchema, favoriteInputSchema, themeSchema } from "@shared/schema";
+import {
+  chapterRefSchema,
+  favoriteInputSchema,
+  highlightInputSchema,
+  noteInputSchema,
+  planInputSchema,
+  themeSchema,
+} from "@shared/schema";
+import { safeTimeZone } from "@shared/plans";
 
 // Tekst biblijny jest niezmienny → agresywny cache po stronie klienta/CDN.
+// Express dokłada słaby ETag do res.json(), więc po wygaśnięciu max-age przeglądarka
+// rewaliduje przez If-None-Match i dostaje 304 bez ciała.
 const IMMUTABLE = "public, max-age=86400, stale-while-revalidate=604800";
 
 function asyncHandler(fn: (req: Request, res: Response) => Promise<unknown>) {
@@ -45,6 +55,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ---- stan użytkownika ----
   // Jedna bramka na cały prefiks: bez sesji te trasy zwracają 401, a handlery
   // poniżej mogą bezwarunkowo ufać `getUserId(req)`.
+  app.use("/api/me", (_req, res, next) => {
+    // Dane osobiste nie mogą trafić do współdzielonego cache (CDN/proxy).
+    res.set("Cache-Control", "private, no-store");
+    next();
+  });
   app.use("/api/me", requireAuth);
 
   app.get(
@@ -118,6 +133,79 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { bookId, chapter, verseFrom } = parsed.data;
       await storage.removeFavorite(await getUserId(req), bookId, chapter, verseFrom);
       res.json({ ok: true });
+    }),
+  );
+
+  // Wyróżnienia i notatki: jeden odczyt na rozdział, zapis pojedynczego wersetu.
+  app.get(
+    "/api/me/marks",
+    asyncHandler(async (req, res) => {
+      const parsed = chapterRefSchema.safeParse({
+        bookId: req.query.book,
+        chapter: Number(req.query.chapter),
+      });
+      if (!parsed.success) return res.status(400).json({ message: "Nieprawidłowe dane" });
+      res.json(await storage.getMarks(await getUserId(req), parsed.data.bookId, parsed.data.chapter));
+    }),
+  );
+
+  app.put(
+    "/api/me/highlights",
+    asyncHandler(async (req, res) => {
+      const parsed = highlightInputSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Nieprawidłowe dane" });
+      await storage.setHighlight(await getUserId(req), parsed.data);
+      res.json({ ok: true });
+    }),
+  );
+
+  app.put(
+    "/api/me/notes",
+    asyncHandler(async (req, res) => {
+      const parsed = noteInputSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Nieprawidłowe dane" });
+      await storage.setNote(await getUserId(req), parsed.data);
+      res.json({ ok: true });
+    }),
+  );
+
+  app.get(
+    "/api/me/notes",
+    asyncHandler(async (req, res) => {
+      res.json(await storage.listNotes(await getUserId(req)));
+    }),
+  );
+
+  // Plany i statystyki zależą od „dziś" użytkownika, więc klient podaje strefę (?tz=Europe/Warsaw).
+  app.get(
+    "/api/me/plans",
+    asyncHandler(async (req, res) => {
+      res.json(await storage.getPlans(await getUserId(req), safeTimeZone(req.query.tz)));
+    }),
+  );
+
+  app.post(
+    "/api/me/plans",
+    asyncHandler(async (req, res) => {
+      const parsed = planInputSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Nieprawidłowe dane" });
+      await storage.createPlan(await getUserId(req), parsed.data);
+      res.json({ ok: true });
+    }),
+  );
+
+  app.delete(
+    "/api/me/plans/:id",
+    asyncHandler(async (req, res) => {
+      await storage.deletePlan(await getUserId(req), String(req.params.id));
+      res.json({ ok: true });
+    }),
+  );
+
+  app.get(
+    "/api/me/stats",
+    asyncHandler(async (req, res) => {
+      res.json(await storage.getStats(await getUserId(req), safeTimeZone(req.query.tz)));
     }),
   );
 
