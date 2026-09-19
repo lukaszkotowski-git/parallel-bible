@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -12,6 +12,7 @@ import {
 import { AppHeader, useAuthed } from "@/components/app-header";
 import { ChapterCommentary } from "@/components/chapter-commentary";
 import { SupportNudge } from "@/components/support-nudge";
+import { PlTranslationSelect } from "@/components/pl-translation-select";
 import { ReadingSettingsPopover } from "@/components/reading-settings-popover";
 import { VerseRow } from "@/components/verse-row";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ import {
   addFavorite,
   addLearnCard,
   checkVerse,
+  fetchChapter,
   fetchProgress,
   invalidateLearn,
   removeLearnCard,
@@ -43,6 +45,7 @@ import {
   type HighlightColor,
 } from "@/lib/api";
 import { saveLocalPosition } from "@/lib/last-position";
+import { usePlTranslation } from "@/lib/pl-translation";
 import { queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 
@@ -58,8 +61,11 @@ export default function ReadPage() {
   // Okno „jak Ci się podoba aplikacja?" — pokazuje je serwer w odpowiedzi na zapis rozdziału.
   const [nudge, setNudge] = useState<{ chapters: number } | null>(null);
 
+  const { id: pl } = usePlTranslation();
   const { data, isLoading, isError, error, refetch } = useQuery<ChapterDto>({
-    queryKey: qk.chapter(bookId, chapter),
+    queryKey: qk.chapter(bookId, chapter, pl),
+    queryFn: () => fetchChapter(bookId, chapter, pl),
+    placeholderData: keepPreviousData, // przy zmianie tłumaczenia stary tekst zostaje do czasu nowego
     retry: 1, // jedna ponowna próba: chwilowy brak sieci nie powinien od razu pokazywać błędu
   });
 
@@ -69,9 +75,14 @@ export default function ReadPage() {
   const nextRef = data?.nav.next;
   useEffect(() => {
     for (const ref of [nextRef, prevRef]) {
-      if (ref) queryClient.prefetchQuery({ queryKey: qk.chapter(ref.book, ref.chapter) });
+      if (ref) {
+        queryClient.prefetchQuery({
+          queryKey: qk.chapter(ref.book, ref.chapter, pl),
+          queryFn: () => fetchChapter(ref.book, ref.chapter, pl),
+        });
+      }
     }
-  }, [prevRef?.book, prevRef?.chapter, nextRef?.book, nextRef?.chapter]);
+  }, [prevRef?.book, prevRef?.chapter, nextRef?.book, nextRef?.chapter, pl]);
 
   // Trzymamy postęp w cache'u, żeby po akcji dało się wykryć awans na wyższy poziom.
   useQuery({ queryKey: qk.progress, queryFn: fetchProgress, enabled: authed });
@@ -386,6 +397,8 @@ export default function ReadPage() {
                   {allOpen ? "Zwiń wszystkie PL" : "Rozwiń wszystkie PL"}
                 </Button>
 
+                <PlTranslationSelect />
+
                 <ReadingSettingsPopover />
 
                 <Button
@@ -432,7 +445,7 @@ export default function ReadPage() {
               {data.extraPl.length > 0 && (
                 <div className="mt-6 rounded-lg border border-dashed border-border bg-muted/40 p-4">
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Dodatkowe wersety w Biblii Gdańskiej
+                    Dodatkowe wersety: {data.translations.pl.name}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Numeracja przekładów nie zawsze się pokrywa — te wersety nie mają odpowiednika w WEB.

@@ -27,6 +27,7 @@ import {
   noteInputSchema,
   planInputSchema,
   themeSchema,
+  plTranslationSchema,
 } from "@shared/schema";
 import { safeTimeZone } from "@shared/plans";
 import type { SupportConfig } from "@shared/schema";
@@ -96,6 +97,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }),
   );
 
+  // Polskie tłumaczenia do wyboru — publiczne, bo wybór działa także bez konta.
+  app.get(
+    "/api/translations",
+    asyncHandler(async (_req, res) => {
+      res.json(await storage.getPlTranslations());
+    }),
+  );
+
   app.get(
     "/api/chapter/:book/:chapter",
     asyncHandler(async (req, res) => {
@@ -103,7 +112,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!Number.isInteger(chapter) || chapter < 1) {
         return res.status(400).json({ message: "Nieprawidłowy numer rozdziału" });
       }
-      const data = await storage.getChapter(String(req.params.book), chapter);
+      const pl = typeof req.query.pl === "string" ? req.query.pl : null;
+      const data = await storage.getChapter(String(req.params.book), chapter, pl);
       if (!data) return res.status(404).json({ message: "Nie znaleziono rozdziału" });
       res.set("Cache-Control", IMMUTABLE);
       res.json(data);
@@ -510,6 +520,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const parsed = themeSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Nieprawidłowe dane" });
       await storage.setTheme(await getUserId(req), parsed.data.theme);
+      res.json({ ok: true });
+    }),
+  );
+
+  app.put(
+    "/api/me/pl-translation",
+    asyncHandler(async (req, res) => {
+      const parsed = plTranslationSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Nieprawidłowe dane" });
+      const ok = await storage.setPlTranslation(await getUserId(req), parsed.data.id);
+      if (!ok) return res.status(404).json({ message: "Nie ma takiego tłumaczenia" });
       res.json({ ok: true });
     }),
   );

@@ -65,6 +65,7 @@ export interface UserStateDto {
   percent: number; // 0–100, zaokrąglone do 1 miejsca
   favoritesCount: number;
   theme: "light" | "dark";
+  plTranslation: string; // Translation.id wybranego tłumaczenia polskiego
   role: "user" | "admin";
 }
 
@@ -93,6 +94,8 @@ export const bookReadSchema = z.object({
 });
 
 export const themeSchema = z.object({ theme: z.enum(["light", "dark"]) });
+
+export const plTranslationSchema = z.object({ id: z.string().min(1).max(16) });
 
 export const favoriteInputSchema = chapterRefSchema.extend({
   verseFrom: z.number().int().positive(),

@@ -220,7 +220,7 @@ export default function Home() {
         )}
 
         <p className="mt-12 border-t border-border pt-6 text-xs leading-relaxed text-muted-foreground">
-          Teksty w domenie publicznej: World English Bible (EN) oraz Biblia Gdańska 1632 (PL).
+          Teksty w domenie publicznej: World English Bible (EN) oraz, do wyboru po polsku, Biblia Gdańska (1632) i Biblia Jakuba Wujka (1599).
           Kanon 66 ksiąg, 1189 rozdziałów.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3">

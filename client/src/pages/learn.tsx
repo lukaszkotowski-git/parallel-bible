@@ -76,7 +76,7 @@ function ReviewSession({ initial, onFinish }: { initial: LearnCardDto[]; onFinis
         {revealed ? (
           <>
             <p className="verse-pl mt-4 animate-verse-reveal border-l-2 border-primary/40 pl-3" data-testid="review-pl">
-              {card.pl ?? "Brak odpowiednika w numeracji Biblii Gdańskiej."}
+              {card.pl ?? "Brak odpowiednika w numeracji wybranego tłumaczenia."}
             </p>
             <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {RATING_BUTTONS.map((b) => (

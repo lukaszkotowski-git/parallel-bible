@@ -12,7 +12,7 @@ datasource db {
 }
 
 model Translation {
-  id        String  @id // "WEB", "BG"
+  id        String  @id // "WEB", "BG", "WUJ"
   language  String // "en" | "pl"
   name      String // "World English Bible"
   shortName String
@@ -78,6 +78,7 @@ model User {
   name              String
   image             String?
   theme             String           @default("light") // preferencja czytania: "light" | "dark"
+  plTranslation     String           @default("BG") // wybrane tłumaczenie polskie (Translation.id, language "pl")
   showOnLeaderboard Boolean          @default(false) // zgoda na pokazanie imienia w rankingu; domyślnie wyłączona
   // Pytanie „jak Ci się podoba aplikacja" (zachęta do wsparcia): przy ilu przeczytanych rozdziałach
   // ostatnio je pokazano i czy użytkownik wybrał rzadsze przypominanie (co 77 zamiast co 15).

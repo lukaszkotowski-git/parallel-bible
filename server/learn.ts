@@ -7,7 +7,7 @@ import { dayKey } from "@shared/plans";
 import type { LearnCardDto, LearnDto, Rating, VerseOfDayDto, VerseRefInput } from "@shared/gamification";
 
 const EN = "WEB";
-const PL = "BG";
+const DEFAULT_PL = "BG";
 const DAY_MS = 86_400_000;
 const DUE_BATCH = 20;
 /** Odstępy powtórek dla pudełek 1–5 (dni). */
@@ -20,7 +20,13 @@ const after = (ms: number) => new Date(Date.now() + ms);
 type Ref = { bookId: string; chapter: number; verse: number };
 const key = (r: Ref) => `${r.bookId}:${r.chapter}:${r.verse}`;
 
-async function verseTexts(refs: Ref[]) {
+/** Polskie tłumaczenie wybrane przez użytkownika — fiszki i werset dnia pokazują to samo co czytnik. */
+async function userPl(userId: string): Promise<string> {
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { plTranslation: true } });
+  return u?.plTranslation ?? DEFAULT_PL;
+}
+
+async function verseTexts(refs: Ref[], PL: string) {
   const out = new Map<string, { en: string; pl: string | null }>();
   if (refs.length === 0) return out;
   const rows = await prisma.verse.findMany({
@@ -40,8 +46,11 @@ async function verseTexts(refs: Ref[]) {
   return out;
 }
 
-async function toDtos(cards: { bookId: string; chapter: number; verse: number; box: number; mastered: boolean; dueAt: Date }[]) {
-  const texts = await verseTexts(cards);
+async function toDtos(
+  cards: { bookId: string; chapter: number; verse: number; box: number; mastered: boolean; dueAt: Date }[],
+  pl: string,
+) {
+  const texts = await verseTexts(cards, pl);
   return cards.map<LearnCardDto>((c) => ({
     bookId: c.bookId,
     chapter: c.chapter,
@@ -59,7 +68,8 @@ export async function getLearn(userId: string): Promise<LearnDto> {
   const all = await prisma.learnCard.findMany({ where: { userId }, orderBy: { dueAt: "asc" } });
   const due = all.filter((c) => c.dueAt <= now).slice(0, DUE_BATCH);
   const dueTotal = all.filter((c) => c.dueAt <= now).length;
-  const [dueDtos, cardDtos] = await Promise.all([toDtos(due), toDtos(all)]);
+  const pl = await userPl(userId);
+  const [dueDtos, cardDtos] = await Promise.all([toDtos(due, pl), toDtos(all, pl)]);
   return {
     due: dueDtos,
     cards: cardDtos,
@@ -176,7 +186,7 @@ export async function verseOfDay(userId: string, tz: string): Promise<VerseOfDay
   const ref: Ref = { bookId: pick.bookId, chapter: pick.chapter, verse: verses[hash(`${seed}:v`) % verses.length]!.verse };
 
   const [texts, card] = await Promise.all([
-    verseTexts([ref]),
+    userPl(userId).then((pl) => verseTexts([ref], pl)),
     prisma.learnCard.findUnique({ where: { userId_bookId_chapter_verse: { userId, ...ref } } }),
   ]);
   const t = texts.get(key(ref));

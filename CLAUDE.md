@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Parallel Bible — a Polish/English parallel Scripture reader. English (World English Bible) reads
 continuously; the Polish translation (Biblia Gdańska, 1632) is revealed per-verse on click. Full
 66-book Protestant canon, 1189 chapters, ~62k verses. UI text and code comments are in Polish.
+The reader can pick the Polish translation: Biblia Gdańska (`BG`, default) or Biblia Jakuba Wujka (`WUJ`).
 
 ## Commands
 
@@ -79,6 +80,21 @@ routes, API paths, and the `shared/books.ts` reference table all key off it.
 - `shared/schema.ts` — API request/response DTOs and Zod input-validation schemas
   (`chapterRefSchema`, `favoriteInputSchema`, `themeSchema`), used by both `server/routes.ts` and
   the client's `lib/api.ts`.
+
+**Polish translation choice**: `Translation` rows with `language = "pl"` are the selectable options
+(`GET /api/translations`, public). The chapter endpoint takes `?pl=<id>` (unknown ids fall back to `BG`);
+the client keeps the choice in `localStorage` key `pb-pl`, overridden by `User.plTranslation` once
+logged in (same pattern as theme; `usePlTranslation()` in `client/src/lib/pl-translation.ts`). The
+chapter query key includes the translation id. Flashcards/verse of the day (`server/learn.ts`) follow
+the user's choice too. To add another public-domain Polish translation, add a `TranslationSpec` in
+`scripts/import-bible.ts` — the import skips translations already in the DB, so it only loads the new one.
+
+**Wujek is parsed, not downloaded as JSON**: `scripts/wujek.ts` fetches the Wikisource EPUB
+(`syndereza/biblia-wujka`, override with `WUJEK_EPUB=/path` or `WUJEK_EPUB_URL`) and parses it locally
+with a tiny built-in ZIP reader. The source uses Vulgate Psalm numbering, remapped to Hebrew in
+`psalmTarget`; psalm titles are merged into verse 1 to match WEB (`alignPsalmTitle`, needs the WEB
+source as reference, so WEB must come first in `TRANSLATIONS`). ~100 chapters still differ from WEB
+by 1–2 verses (Vulgate versification) — the usual best-effort pairing applies.
 
 **Verse pairing across translations is best-effort by verse number**, not a hard join — WEB and BG
 verse numbering doesn't always agree (`server/storage.ts:getChapter`). Verses present in English

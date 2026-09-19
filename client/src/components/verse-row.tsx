@@ -116,7 +116,7 @@ export function VerseRow({
             >
               {verse.pl ?? (
                 <span className="text-xs not-italic text-muted-foreground">
-                  Brak odpowiednika w numeracji Biblii Gdańskiej — zajrzyj do sąsiednich wersetów.
+                  Brak odpowiednika w numeracji tego tłumaczenia — zajrzyj do sąsiednich wersetów.
                 </span>
               )}
             </p>

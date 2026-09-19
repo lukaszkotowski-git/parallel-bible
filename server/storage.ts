@@ -15,16 +15,52 @@ import type {
   PlanDto,
   PlanInput,
   StatsDto,
+  TranslationDto,
   UserStateDto,
 } from "@shared/schema";
 import type { AdminUserDto, AdminUserPatch, AdminUsersDto } from "@shared/schema";
 
 const EN = "WEB";
-const PL = "BG";
+/** Domyślne tłumaczenie polskie — używane, gdy nie wybrano innego albo wybrane nie istnieje. */
+export const DEFAULT_PL = "BG";
+
+const toTranslationDto = (t: {
+  id: string;
+  name: string;
+  shortName: string;
+  year: number | null;
+  license: string;
+  sourceUrl: string | null;
+}) => ({
+  id: t.id,
+  name: t.name,
+  shortName: t.shortName,
+  year: t.year,
+  license: t.license,
+  sourceUrl: t.sourceUrl,
+});
+
+/** Polskie tłumaczenia, które mają wgrany tekst (domyślne pierwsze, reszta wg roku). */
+async function listPlTranslations() {
+  const rows = await prisma.translation.findMany({
+    where: { language: "pl", verses: { some: {} } },
+    orderBy: { year: "desc" },
+  });
+  return rows.sort((a, b) => Number(b.id === DEFAULT_PL) - Number(a.id === DEFAULT_PL));
+}
+
+/** Zwraca id istniejącego tłumaczenia polskiego; nieznane wartości cofają się do domyślnego. */
+async function resolvePl(requested?: string | null): Promise<string> {
+  if (!requested || requested === DEFAULT_PL) return DEFAULT_PL;
+  const found = await prisma.translation.findFirst({ where: { id: requested, language: "pl" }, select: { id: true } });
+  return found?.id ?? DEFAULT_PL;
+}
 
 export interface IStorage {
   getBooks(): Promise<BookDto[]>;
-  getChapter(bookId: string, chapter: number): Promise<ChapterDto | null>;
+  getChapter(bookId: string, chapter: number, pl?: string | null): Promise<ChapterDto | null>;
+  getPlTranslations(): Promise<TranslationDto[]>;
+  setPlTranslation(userId: string, id: string): Promise<boolean>;
   getState(userId: string): Promise<UserStateDto>;
   setTheme(userId: string, theme: "light" | "dark"): Promise<void>;
   getReadChapters(userId: string, bookId?: string): Promise<{ bookId: string; chapter: number }[]>;
@@ -68,9 +104,21 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async getChapter(bookId: string, chapter: number): Promise<ChapterDto | null> {
+  async getPlTranslations() {
+    return (await listPlTranslations()).map(toTranslationDto);
+  }
+
+  async setPlTranslation(userId: string, id: string) {
+    const found = await prisma.translation.findFirst({ where: { id, language: "pl" }, select: { id: true } });
+    if (!found) return false;
+    await prisma.user.update({ where: { id: userId }, data: { plTranslation: id } });
+    return true;
+  }
+
+  async getChapter(bookId: string, chapter: number, requestedPl?: string | null): Promise<ChapterDto | null> {
     const book = await prisma.book.findUnique({ where: { id: bookId } });
     if (!book || chapter < 1 || chapter > book.chapterCount) return null;
+    const PL = await resolvePl(requestedPl);
 
     const [verses, translations, books, summary] = await Promise.all([
       prisma.verse.findMany({
@@ -110,17 +158,7 @@ export class DatabaseStorage implements IStorage {
           ? { book: books[idx + 1].id, chapter: 1 }
           : null;
 
-    const toDto = (id: string) => {
-      const t = translations.find((x) => x.id === id)!;
-      return {
-        id: t.id,
-        name: t.name,
-        shortName: t.shortName,
-        year: t.year,
-        license: t.license,
-        sourceUrl: t.sourceUrl,
-      };
-    };
+    const toDto = (id: string) => toTranslationDto(translations.find((x) => x.id === id)!);
 
     return {
       book: {
@@ -145,7 +183,7 @@ export class DatabaseStorage implements IStorage {
       prisma.readingPosition.findUnique({ where: { userId } }),
       // Mianownik liczony z bazy, nie hardcodowany — po dodaniu deuterokanonu przeliczy się sam.
       prisma.book.aggregate({ _sum: { chapterCount: true } }),
-      prisma.user.findUnique({ where: { id: userId }, select: { theme: true, role: true } }),
+      prisma.user.findUnique({ where: { id: userId }, select: { theme: true, role: true, plTranslation: true } }),
     ]);
 
     const totalChapters = totals._sum.chapterCount ?? 0;
@@ -164,6 +202,7 @@ export class DatabaseStorage implements IStorage {
       percent: totalChapters ? Math.round((readCount / totalChapters) * 1000) / 10 : 0,
       favoritesCount,
       theme: user?.theme === "dark" ? "dark" : "light",
+      plTranslation: user?.plTranslation ?? DEFAULT_PL,
       role: user?.role === "admin" ? "admin" : "user",
     };
   }

@@ -1,5 +1,5 @@
 /**
- * Import tłumaczeń public domain do bazy.
+ * Import tłumaczeń public domain do bazy (WEB, Biblia Gdańska, Biblia Wujka).
  *
  *   npm run import:bible                    # pobiera dane z GitHuba (midvash/bible-data)
  *   BIBLE_DATA_DIR=/ścieżka npm run import:bible   # import z lokalnego klona repo
@@ -12,6 +12,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { BOOKS, BOOK_BY_ID, TOTAL_BOOKS, TOTAL_CHAPTERS } from "../shared/books";
+import { loadWujek } from "./wujek";
 
 const prisma = new PrismaClient();
 
@@ -43,6 +44,10 @@ interface TranslationSpec {
   year: number;
   sourceUrl: string;
   isDefault: boolean;
+  /** Minimalna liczba wersetów, powyżej której tłumaczenie uznajemy za już zaimportowane. */
+  minVerses: number;
+  /** Własny loader dla źródeł spoza midvash/bible-data (lang/slug wtedy tylko opisują źródło). */
+  load?: () => Promise<SourceBible>;
 }
 
 const TRANSLATIONS: TranslationSpec[] = [
@@ -55,6 +60,7 @@ const TRANSLATIONS: TranslationSpec[] = [
     year: 2000,
     sourceUrl: "https://worldenglish.bible/",
     isDefault: true,
+    minVerses: 30000,
   },
   {
     id: "BG",
@@ -65,10 +71,37 @@ const TRANSLATIONS: TranslationSpec[] = [
     year: 1632,
     sourceUrl: "https://github.com/midvash/bible-data",
     isDefault: false,
+    minVerses: 30000,
+  },
+  {
+    // Wydanie 1923 z Wikiźródeł (przekład 1599, domena publiczna), parsowane z EPUB-a przez scripts/wujek.ts.
+    id: "WUJ",
+    lang: "pl",
+    slug: "wujek",
+    name: "Biblia Jakuba Wujka",
+    shortName: "BW",
+    year: 1599,
+    sourceUrl: "https://pl.wikisource.org/wiki/Biblia_Wujka_(1923)",
+    isDefault: false,
+    minVerses: 30000,
+    // Numeracja psalmów w źródle jest z Wulgaty — loader dopasowuje ją do WEB.
+    load: async () => (await loadWujek(await loadSource(TRANSLATIONS[0]))) as SourceBible,
   },
 ];
 
-async function loadSource(spec: TranslationSpec): Promise<SourceBible> {
+const sourceCache = new Map<string, Promise<SourceBible>>();
+
+/** Źródło każdego tłumaczenia pobieramy raz, nawet jeśli potrzebuje go też inny loader. */
+function loadSource(spec: TranslationSpec): Promise<SourceBible> {
+  let p = sourceCache.get(spec.id);
+  if (!p) {
+    p = spec.load ? spec.load() : loadRemote(spec);
+    sourceCache.set(spec.id, p);
+  }
+  return p;
+}
+
+async function loadRemote(spec: TranslationSpec): Promise<SourceBible> {
   const rel = `${spec.lang}/${spec.slug}/${spec.slug}.json`;
   if (LOCAL_DIR) {
     const file = path.join(LOCAL_DIR, "versions", rel);
@@ -196,32 +229,34 @@ async function importTranslation(spec: TranslationSpec) {
 }
 
 /**
- * Import przy każdym starcie kontenera byłby marnotrawstwem (ok. 62 tys. wierszy
- * i 132 pliki do pobrania). Jeśli baza jest już kompletna, pomijamy — chyba że
- * FORCE_IMPORT=1 wymusi odświeżenie tekstu.
+ * Import przy każdym starcie kontenera byłby marnotrawstwem (ok. 31 tys. wierszy na tłumaczenie
+ * i pobieranie źródeł). Tłumaczenia, które są już w bazie, pomijamy — chyba że FORCE_IMPORT=1
+ * wymusi odświeżenie tekstu. Sprawdzamy każde osobno, więc dodanie nowego tłumaczenia
+ * importuje tylko je, bez ruszania reszty.
  */
-async function alreadyComplete(): Promise<boolean> {
-  if (process.env.FORCE_IMPORT === "1") return false;
+async function pendingTranslations(): Promise<TranslationSpec[]> {
+  if (process.env.FORCE_IMPORT === "1") return TRANSLATIONS;
   try {
     const counts = await prisma.verse.groupBy({
       by: ["translationId"],
       _count: { _all: true },
     });
     const byId = Object.fromEntries(counts.map((c) => [c.translationId, c._count._all]));
-    return TRANSLATIONS.every((t) => (byId[t.id] ?? 0) > 30000);
+    return TRANSLATIONS.filter((t) => (byId[t.id] ?? 0) <= t.minVerses);
   } catch {
-    return false;
+    return TRANSLATIONS;
   }
 }
 
 async function main() {
   console.log(`Źródło danych: ${LOCAL_DIR ? `katalog lokalny ${LOCAL_DIR}` : RAW_BASE}`);
-  if (await alreadyComplete()) {
+  const pending = await pendingTranslations();
+  if (pending.length === 0) {
     console.log("✓ Tekst już zaimportowany — pomijam (FORCE_IMPORT=1 wymusza ponowny import)");
     return;
   }
   await upsertBooks();
-  for (const spec of TRANSLATIONS) await importTranslation(spec);
+  for (const spec of pending) await importTranslation(spec);
 
   const summary = await prisma.verse.groupBy({
     by: ["translationId"],
