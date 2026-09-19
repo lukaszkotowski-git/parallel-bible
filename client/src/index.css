@@ -351,15 +351,15 @@
 @layer components {
   /* Tekst Pisma — miara ok. 62–68 znaków, wysoki interlinia dla długiego czytania. */
   .verse-en {
-    font-family: var(--font-serif);
-    font-size: clamp(1.0625rem, 0.98rem + 0.42vw, 1.25rem);
+    font-family: var(--reading-font, var(--font-serif));
+    font-size: calc(clamp(1.0625rem, 0.98rem + 0.42vw, 1.25rem) * var(--reading-scale, 1));
     line-height: 1.72;
     letter-spacing: -0.003em;
   }
 
   .verse-pl {
-    font-family: var(--font-serif);
-    font-size: clamp(1rem, 0.94rem + 0.3vw, 1.125rem);
+    font-family: var(--reading-font, var(--font-serif));
+    font-size: calc(clamp(1rem, 0.94rem + 0.3vw, 1.125rem) * var(--reading-scale, 1));
     line-height: 1.66;
     color: hsl(var(--verse-pl));
     font-style: italic;
@@ -367,5 +367,41 @@
 
   .font-display {
     font-family: var(--font-display);
+  }
+}
+
+/* Wyróżnienia wersetów — półprzezroczyste, żeby tekst zachował kontrast w obu motywach. */
+@layer components {
+  .hl-yellow { background-color: hsl(48 96% 58% / 0.28); }
+  .hl-green  { background-color: hsl(142 60% 45% / 0.24); }
+  .hl-blue   { background-color: hsl(212 90% 60% / 0.22); }
+  .hl-pink   { background-color: hsl(330 80% 62% / 0.22); }
+  .dark .hl-yellow { background-color: hsl(48 90% 55% / 0.2); }
+  .dark .hl-green  { background-color: hsl(142 55% 50% / 0.2); }
+  .dark .hl-blue   { background-color: hsl(212 85% 62% / 0.22); }
+  .dark .hl-pink   { background-color: hsl(330 75% 65% / 0.22); }
+
+  /* Link „przejdź do treści" — widoczny dopiero po sfokusowaniu klawiaturą. */
+  .skip-link {
+    position: absolute;
+    left: 0.75rem;
+    top: -4rem;
+    z-index: 100;
+    border-radius: 0.375rem;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    padding: 0.5rem 0.875rem;
+    font-size: 0.875rem;
+    transition: top 0.15s;
+  }
+  .skip-link:focus { top: 0.75rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

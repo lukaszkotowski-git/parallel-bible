@@ -59,7 +59,7 @@ export default function LoginPage() {
 
   return (
     <div className="relative z-10 flex min-h-screen flex-col items-center justify-center px-4 py-10">
-      <main className="w-full max-w-sm">
+      <main id="main" tabIndex={-1} className="w-full max-w-sm">
         <Link
           href="/"
           className="mb-6 inline-flex items-center gap-1.5 rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground"

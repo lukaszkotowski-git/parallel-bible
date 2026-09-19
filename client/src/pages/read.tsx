@@ -10,6 +10,8 @@ import {
   Check,
 } from "lucide-react";
 import { AppHeader, useAuthed } from "@/components/app-header";
+import { ChapterCommentary } from "@/components/chapter-commentary";
+import { ReadingSettingsPopover } from "@/components/reading-settings-popover";
 import { VerseRow } from "@/components/verse-row";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,15 +20,23 @@ import { useToast } from "@/hooks/use-toast";
 import {
   addFavorite,
   fetchFavorites,
+  fetchMarks,
   fetchReadChapters,
+  invalidateMarks,
   invalidateUserState,
   markRead,
   qk,
   removeFavorite,
+  saveHighlight,
+  saveNote,
   savePosition,
   unmarkRead,
   type ChapterDto,
+  type ChapterMarksDto,
+  type HighlightColor,
 } from "@/lib/api";
+import { saveLocalPosition } from "@/lib/last-position";
+import { queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 
 export default function ReadPage() {
@@ -39,9 +49,34 @@ export default function ReadPage() {
 
   const [openVerses, setOpenVerses] = useState<Set<number>>(new Set());
 
-  const { data, isLoading, isError } = useQuery<ChapterDto>({
+  const { data, isLoading, isError, error, refetch } = useQuery<ChapterDto>({
     queryKey: qk.chapter(bookId, chapter),
+    retry: 1, // jedna ponowna próba: chwilowy brak sieci nie powinien od razu pokazywać błędu
   });
+
+  // Sąsiednie rozdziały ładujemy z wyprzedzeniem, żeby „Następny" był natychmiastowy.
+  // Odpowiedzi są niezmienne i cache'owane, więc koszt to jedno lekkie zapytanie.
+  const prevRef = data?.nav.prev;
+  const nextRef = data?.nav.next;
+  useEffect(() => {
+    for (const ref of [nextRef, prevRef]) {
+      if (ref) queryClient.prefetchQuery({ queryKey: qk.chapter(ref.book, ref.chapter) });
+    }
+  }, [prevRef?.book, prevRef?.chapter, nextRef?.book, nextRef?.chapter]);
+
+  const { data: marks } = useQuery({
+    queryKey: qk.marks(bookId, chapter),
+    queryFn: () => fetchMarks(bookId, chapter),
+    enabled: authed,
+  });
+  const highlightByVerse = useMemo(
+    () => new Map((marks?.highlights ?? []).map((h) => [h.verse, h.color])),
+    [marks],
+  );
+  const noteByVerse = useMemo(
+    () => new Map((marks?.notes ?? []).map((n) => [n.verse, n.text])),
+    [marks],
+  );
 
   const { data: favorites } = useQuery({
     queryKey: qk.favorites(bookId, chapter),
@@ -69,6 +104,7 @@ export default function ReadPage() {
   useEffect(() => {
     setOpenVerses(new Set());
     window.scrollTo({ top: 0 });
+    if (bookId && chapter) saveLocalPosition({ bookId, chapter });
     if (authed && bookId && chapter) {
       savePosition(bookId, chapter)
         .then(() => invalidateUserState())
@@ -116,9 +152,55 @@ export default function ReadPage() {
 
   const toggleFavorite = async (v: number) => {
     if (!authed) return promptLogin("Ulubione wersety");
-    if (favoriteSet.has(v)) await removeFavorite(bookId, chapter, v);
-    else await addFavorite(bookId, chapter, v);
+    try {
+      if (favoriteSet.has(v)) await removeFavorite(bookId, chapter, v);
+      else await addFavorite(bookId, chapter, v);
+    } catch {
+      toast({ title: "Nie udało się zapisać ulubionego", variant: "destructive", duration: 4000 });
+    }
     invalidateUserState();
+  };
+
+  // Zapis z optymistyczną aktualizacją cache — kolor/notatka pojawiają się od razu,
+  // a invalidate na końcu uzgadnia z serwerem (także po błędzie).
+  const updateMarks = (fn: (m: ChapterMarksDto) => ChapterMarksDto) =>
+    queryClient.setQueryData<ChapterMarksDto>(qk.marks(bookId, chapter), (old) =>
+      fn(old ?? { highlights: [], notes: [] }),
+    );
+
+  const setHighlight = async (v: number, color: HighlightColor | null) => {
+    if (!authed) return promptLogin("Wyróżnienia");
+    updateMarks((m) => ({
+      ...m,
+      highlights: [
+        ...m.highlights.filter((h) => h.verse !== v),
+        ...(color ? [{ verse: v, color }] : []),
+      ],
+    }));
+    try {
+      await saveHighlight(bookId, chapter, v, color);
+    } catch {
+      toast({ title: "Nie udało się zapisać wyróżnienia", variant: "destructive", duration: 4000 });
+    }
+    invalidateMarks();
+  };
+
+  const setNote = async (v: number, text: string) => {
+    if (!authed) return promptLogin("Notatki");
+    const trimmed = text.trim();
+    updateMarks((m) => ({
+      ...m,
+      notes: [
+        ...m.notes.filter((n) => n.verse !== v),
+        ...(trimmed ? [{ verse: v, text: trimmed, updatedAt: new Date().toISOString() }] : []),
+      ],
+    }));
+    try {
+      await saveNote(bookId, chapter, v, text);
+    } catch {
+      toast({ title: "Nie udało się zapisać notatki", variant: "destructive", duration: 4000 });
+    }
+    invalidateMarks();
   };
 
   /** Auto-zapis postępu: krótki popup (2 s) z możliwością cofnięcia, zawsze da się zamknąć krzyżykiem. */
@@ -149,17 +231,30 @@ export default function ReadPage() {
   };
 
   if (isError) {
+    // 404 = zły adres; wszystko inne (sieć, 5xx) da się ponowić.
+    const notFound = error instanceof Error && error.message.startsWith("404");
     return (
       <div className="relative z-10 min-h-screen">
         <AppHeader />
-        <main className="mx-auto max-w-3xl px-4 py-16 text-center sm:px-6">
-          <h1 className="font-display text-xl font-bold">Nie znaleziono rozdziału</h1>
+        <main id="main" tabIndex={-1} className="mx-auto max-w-3xl px-4 py-16 text-center sm:px-6">
+          <h1 className="font-display text-xl font-bold">
+            {notFound ? "Nie znaleziono rozdziału" : "Nie udało się wczytać rozdziału"}
+          </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Sprawdź adres albo wróć do wyboru księgi.
+            {notFound
+              ? "Sprawdź adres albo wróć do wyboru księgi."
+              : "Sprawdź połączenie z internetem i spróbuj ponownie."}
           </p>
-          <Button asChild className="mt-6">
-            <Link href="/">Wybór księgi</Link>
-          </Button>
+          <div className="mt-6 flex justify-center gap-2">
+            {!notFound && (
+              <Button onClick={() => refetch()} data-testid="button-retry">
+                Spróbuj ponownie
+              </Button>
+            )}
+            <Button asChild variant={notFound ? "default" : "outline"}>
+              <Link href="/">Wybór księgi</Link>
+            </Button>
+          </div>
         </main>
       </div>
     );
@@ -169,7 +264,11 @@ export default function ReadPage() {
     <div className="relative z-10 min-h-screen pb-28 sm:pb-12">
       <AppHeader />
 
-      <main className="mx-auto max-w-3xl px-4 pt-6 sm:px-6">
+      <main
+        id="main"
+        className="mx-auto px-4 pt-6 sm:px-6"
+        style={{ maxWidth: "var(--reading-width, 48rem)" }}
+      >
         <Link
           href={`/ksiega/${bookId}`}
           className="inline-flex items-center gap-1.5 rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -212,6 +311,8 @@ export default function ReadPage() {
                   {allOpen ? "Zwiń wszystkie PL" : "Rozwiń wszystkie PL"}
                 </Button>
 
+                <ReadingSettingsPopover />
+
                 <Button
                   variant={isRead ? "secondary" : "ghost"}
                   size="sm"
@@ -241,8 +342,12 @@ export default function ReadPage() {
                   verse={verse}
                   open={openVerses.has(verse.v)}
                   favorite={favoriteSet.has(verse.v)}
+                  highlight={highlightByVerse.get(verse.v)}
+                  note={noteByVerse.get(verse.v)}
                   onToggle={() => toggleVerse(verse.v)}
                   onToggleFavorite={() => toggleFavorite(verse.v)}
+                  onHighlight={(c) => setHighlight(verse.v, c)}
+                  onSaveNote={(t) => setNote(verse.v, t)}
                 />
               ))}
 
@@ -262,6 +367,8 @@ export default function ReadPage() {
                   ))}
                 </div>
               )}
+
+              {data.commentary && <ChapterCommentary commentary={data.commentary} />}
             </div>
 
             {/* Jedna nawigacja: przyklejona do dołu na mobile, w treści na desktopie */}

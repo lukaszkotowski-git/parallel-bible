@@ -2,16 +2,34 @@ import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, BookOpen, Search } from "lucide-react";
+import { readLocalPosition } from "@/lib/last-position";
+import { Button } from "@/components/ui/button";
 import { AppHeader, useAuthed, useUserState } from "@/components/app-header";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { qk, fetchReadChapters, type BookDto } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
+/**
+ * Pozycja z konta ma pierwszeństwo; bez konta (albo gdy konto jeszcze nic nie zapisało)
+ * wracamy do ostatniego miejsca zapamiętanego na tym urządzeniu.
+ */
 function ContinueCard() {
-  const { data: state } = useUserState();
-  if (!state?.position) return null;
-  const { bookId, namePl, chapter } = state.position;
+  const { authed, pending } = useAuthed();
+  const { data: state, isLoading: stateLoading } = useUserState();
+  const { data: books } = useQuery<BookDto[]>({ queryKey: qk.books });
+  if (pending || (authed && stateLoading)) return null;
+
+  let target: { bookId: string; namePl: string; chapter: number } | null = state?.position ?? null;
+  if (!target) {
+    const local = readLocalPosition();
+    const book = local && books?.find((b) => b.id === local.bookId);
+    if (local && book && local.chapter <= book.chapterCount) {
+      target = { bookId: book.id, namePl: book.namePl, chapter: local.chapter };
+    }
+  }
+  if (!target) return null;
+  const { bookId, namePl, chapter } = target;
 
   return (
     <Link
@@ -97,7 +115,10 @@ function BookSection({
 export default function Home() {
   const [query, setQuery] = useState("");
   const { authed, pending } = useAuthed();
-  const { data: books, isLoading } = useQuery<BookDto[]>({ queryKey: qk.books });
+  const { data: books, isLoading, isError, refetch } = useQuery<BookDto[]>({
+    queryKey: qk.books,
+    retry: 1,
+  });
   const { data: read } = useQuery({
     queryKey: qk.read(),
     queryFn: () => fetchReadChapters(),
@@ -125,7 +146,7 @@ export default function Home() {
     <div className="relative z-10 min-h-screen">
       <AppHeader />
 
-      <main className="mx-auto max-w-3xl px-4 pb-20 pt-8 sm:px-6">
+      <main id="main" tabIndex={-1} className="mx-auto max-w-3xl px-4 pb-20 pt-8 sm:px-6">
         <h1 className="font-display text-xl font-bold leading-tight sm:text-xl">
           Pismo w dwóch językach
         </h1>
@@ -168,6 +189,13 @@ export default function Home() {
             {Array.from({ length: 12 }).map((_, i) => (
               <Skeleton key={i} className="h-[70px] rounded-lg" />
             ))}
+          </div>
+        ) : isError ? (
+          <div className="mt-10 text-center" role="alert">
+            <p className="text-sm text-muted-foreground">Nie udało się wczytać listy ksiąg.</p>
+            <Button variant="outline" size="sm" className="mt-3" onClick={() => refetch()}>
+              Spróbuj ponownie
+            </Button>
           </div>
         ) : filtered.length === 0 ? (
           <p className="mt-10 text-center text-sm text-muted-foreground" data-testid="text-no-books">

@@ -2,13 +2,17 @@ import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Check } from "lucide-react";
 import { AppHeader, useAuthed, useUserState } from "@/components/app-header";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { qk, fetchReadChapters, type BookDto } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export default function BookPage() {
   const { book: bookId = "" } = useParams<{ book: string }>();
-  const { data: books, isLoading } = useQuery<BookDto[]>({ queryKey: qk.books });
+  const { data: books, isLoading, isError, refetch } = useQuery<BookDto[]>({
+    queryKey: qk.books,
+    retry: 1,
+  });
   const { authed } = useAuthed();
   const { data: read } = useQuery({
     queryKey: qk.read(bookId),
@@ -25,7 +29,7 @@ export default function BookPage() {
     <div className="relative z-10 min-h-screen">
       <AppHeader />
 
-      <main className="mx-auto max-w-3xl px-4 pb-20 pt-6 sm:px-6">
+      <main id="main" tabIndex={-1} className="mx-auto max-w-3xl px-4 pb-20 pt-6 sm:px-6">
         <Link
           href="/"
           className="inline-flex items-center gap-1.5 rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -34,8 +38,27 @@ export default function BookPage() {
           <ArrowLeft className="h-4 w-4" /> Wybór księgi
         </Link>
 
-        {isLoading || !book ? (
-          <Skeleton className="mt-4 h-8 w-56" />
+        {isLoading ? (
+          <>
+            <Skeleton className="mt-4 h-8 w-56" />
+            <Skeleton className="mt-2 h-4 w-72" />
+            <div className="mt-6 grid grid-cols-5 gap-2 sm:grid-cols-8 md:grid-cols-10">
+              {Array.from({ length: 30 }).map((_, i) => (
+                <Skeleton key={i} className="h-11 rounded-md" />
+              ))}
+            </div>
+          </>
+        ) : isError ? (
+          <div className="mt-10 text-center" role="alert">
+            <p className="text-sm text-muted-foreground">Nie udało się wczytać księgi.</p>
+            <Button variant="outline" size="sm" className="mt-3" onClick={() => refetch()}>
+              Spróbuj ponownie
+            </Button>
+          </div>
+        ) : !book ? (
+          <p className="mt-10 text-center text-sm text-muted-foreground">
+            Nie ma takiej księgi. Wróć do wyboru księgi.
+          </p>
         ) : (
           <>
             <h1 className="mt-4 font-display text-xl font-bold leading-tight">{book.namePl}</h1>

@@ -7,6 +7,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Home from "@/pages/home";
 import BookPage from "@/pages/book";
 import ReadPage from "@/pages/read";
+import PlansPage from "@/pages/plans";
+import StatsPage from "@/pages/stats";
+import NotesPage from "@/pages/notes";
 import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 
@@ -15,6 +18,9 @@ function AppRouter() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/login" component={LoginPage} />
+      <Route path="/plany" component={PlansPage} />
+      <Route path="/statystyki" component={StatsPage} />
+      <Route path="/notatki" component={NotesPage} />
       <Route path="/ksiega/:book" component={BookPage} />
       <Route path="/czytaj/:book/:chapter" component={ReadPage} />
       <Route component={NotFound} />
@@ -26,6 +32,10 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delayDuration={300}>
+        {/* Routing jest hash-owy, więc zwykłe href="#main" zmieniłoby trasę — fokusujemy ręcznie. */}
+        <button type="button" className="skip-link" onClick={() => document.getElementById("main")?.focus()}>
+          Przejdź do treści
+        </button>
         <Toaster />
         <Router hook={useHashLocation}>
           <AppRouter />

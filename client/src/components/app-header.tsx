@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { LogIn, LogOut, Moon, Sun } from "lucide-react";
+import { BarChart3, CalendarCheck, LogIn, LogOut, Moon, StickyNote, Sun } from "lucide-react";
 import { Brand } from "@/components/brand";
 import { ProgressRing } from "@/components/progress-ring";
 import { Button } from "@/components/ui/button";
@@ -111,6 +111,16 @@ function AccountMenu() {
           <span className="block truncate text-sm font-medium">{user.name}</span>
           <span className="block truncate text-xs text-muted-foreground">{user.email}</span>
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/plany" data-testid="link-plans"><CalendarCheck className="mr-2 h-4 w-4" /> Plany czytania</Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/statystyki" data-testid="link-stats"><BarChart3 className="mr-2 h-4 w-4" /> Statystyki</Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/notatki" data-testid="link-notes"><StickyNote className="mr-2 h-4 w-4" /> Moje notatki</Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={async () => {
