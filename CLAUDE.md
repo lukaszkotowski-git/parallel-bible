@@ -119,6 +119,11 @@ all API calls and TanStack Query keys (`qk`); `invalidateUserState()` is the sin
 invalidates all user-state-dependent queries after a mutation — call it (or add to it) rather than
 invalidating query keys ad hoc.
 
+**Celebrations**: badges, level-ups and reaching the daily goal open a dialog with confetti
+(`CelebrationHost` in `App.tsx`, queue in `client/src/lib/rewards.ts`). Call `announceReward(res)` with the
+`RewardDto` returned by any action that can award something; it detects level-ups and the daily goal by
+comparing against the cached `qk.progress`, so keep that query mounted on pages that trigger rewards.
+
 **Build** (`script/build.ts`): builds the client with Vite, then bundles the server with esbuild
 into a single `dist/index.cjs` (CJS, minified). Only dependencies in the `allowlist` array get
 bundled into the server output; everything else in `package.json` is left as an external
