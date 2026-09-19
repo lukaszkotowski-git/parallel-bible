@@ -1,5 +1,6 @@
 import { prisma } from "./db";
 import { BOOK_BY_ID } from "@shared/books";
+import { DEFAULT_ALT, DEFAULT_READ, resolvePair } from "@shared/translations";
 import { chaptersForDay, currentPlanDay, dayKey, daysBetween, planChapters } from "@shared/plans";
 import { getProgress } from "./gamification";
 import type {
@@ -20,12 +21,9 @@ import type {
 } from "@shared/schema";
 import type { AdminUserDto, AdminUserPatch, AdminUsersDto } from "@shared/schema";
 
-const EN = "WEB";
-/** Domyślne tłumaczenie polskie — używane, gdy nie wybrano innego albo wybrane nie istnieje. */
-export const DEFAULT_PL = "BG";
-
 const toTranslationDto = (t: {
   id: string;
+  language: string;
   name: string;
   shortName: string;
   year: number | null;
@@ -33,6 +31,7 @@ const toTranslationDto = (t: {
   sourceUrl: string | null;
 }) => ({
   id: t.id,
+  language: t.language,
   name: t.name,
   shortName: t.shortName,
   year: t.year,
@@ -40,27 +39,25 @@ const toTranslationDto = (t: {
   sourceUrl: t.sourceUrl,
 });
 
-/** Polskie tłumaczenia, które mają wgrany tekst (domyślne pierwsze, reszta wg roku). */
-async function listPlTranslations() {
+/** Tłumaczenia, które mają wgrany tekst; grupowane po języku, w obrębie języka od najnowszego. */
+async function listTranslations() {
   const rows = await prisma.translation.findMany({
-    where: { language: "pl", verses: { some: {} } },
-    orderBy: { year: "desc" },
+    where: { verses: { some: {} } },
+    orderBy: [{ language: "asc" }, { year: "desc" }],
   });
-  return rows.sort((a, b) => Number(b.id === DEFAULT_PL) - Number(a.id === DEFAULT_PL));
-}
-
-/** Zwraca id istniejącego tłumaczenia polskiego; nieznane wartości cofają się do domyślnego. */
-async function resolvePl(requested?: string | null): Promise<string> {
-  if (!requested || requested === DEFAULT_PL) return DEFAULT_PL;
-  const found = await prisma.translation.findFirst({ where: { id: requested, language: "pl" }, select: { id: true } });
-  return found?.id ?? DEFAULT_PL;
+  // Domyślne tłumaczenia na czele swoich języków — to je użytkownik zobaczy jako pierwsze.
+  return rows.sort(
+    (x, y) =>
+      x.language.localeCompare(y.language) ||
+      Number(y.id === DEFAULT_READ || y.id === DEFAULT_ALT) - Number(x.id === DEFAULT_READ || x.id === DEFAULT_ALT),
+  );
 }
 
 export interface IStorage {
   getBooks(): Promise<BookDto[]>;
-  getChapter(bookId: string, chapter: number, pl?: string | null): Promise<ChapterDto | null>;
-  getPlTranslations(): Promise<TranslationDto[]>;
-  setPlTranslation(userId: string, id: string): Promise<boolean>;
+  getChapter(bookId: string, chapter: number, read?: string | null, alt?: string | null): Promise<ChapterDto | null>;
+  getTranslations(): Promise<TranslationDto[]>;
+  setTranslationPrefs(userId: string, read: string, alt: string): Promise<boolean>;
   getState(userId: string): Promise<UserStateDto>;
   setTheme(userId: string, theme: "light" | "dark"): Promise<void>;
   getReadChapters(userId: string, bookId?: string): Promise<{ bookId: string; chapter: number }[]>;
@@ -104,45 +101,51 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async getPlTranslations() {
-    return (await listPlTranslations()).map(toTranslationDto);
+  async getTranslations() {
+    return (await listTranslations()).map(toTranslationDto);
   }
 
-  async setPlTranslation(userId: string, id: string) {
-    const found = await prisma.translation.findFirst({ where: { id, language: "pl" }, select: { id: true } });
-    if (!found) return false;
-    await prisma.user.update({ where: { id: userId }, data: { plTranslation: id } });
+  async setTranslationPrefs(userId: string, read: string, alt: string) {
+    const ids = (await listTranslations()).map((t) => t.id);
+    if (read === alt || !ids.includes(read) || !ids.includes(alt)) return false;
+    await prisma.user.update({ where: { id: userId }, data: { readTranslation: read, altTranslation: alt } });
     return true;
   }
 
-  async getChapter(bookId: string, chapter: number, requestedPl?: string | null): Promise<ChapterDto | null> {
+  async getChapter(
+    bookId: string,
+    chapter: number,
+    requestedRead?: string | null,
+    requestedAlt?: string | null,
+  ): Promise<ChapterDto | null> {
     const book = await prisma.book.findUnique({ where: { id: bookId } });
     if (!book || chapter < 1 || chapter > book.chapterCount) return null;
-    const PL = await resolvePl(requestedPl);
+    const ids = (await listTranslations()).map((t) => t.id);
+    const { read: READ, alt: ALT } = resolvePair(requestedRead, requestedAlt, ids);
 
     const [verses, translations, books, summary] = await Promise.all([
       prisma.verse.findMany({
-        where: { bookId, chapter, translationId: { in: [EN, PL] } },
+        where: { bookId, chapter, translationId: { in: [READ, ALT] } },
         orderBy: [{ verse: "asc" }],
         select: { translationId: true, verse: true, text: true },
       }),
-      prisma.translation.findMany({ where: { id: { in: [EN, PL] } } }),
+      prisma.translation.findMany({ where: { id: { in: [READ, ALT] } } }),
       prisma.book.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, sortOrder: true, chapterCount: true } }),
       prisma.chapterSummary.findUnique({ where: { bookId_chapter: { bookId, chapter } } }),
     ]);
 
-    const en = new Map<number, string>();
-    const pl = new Map<number, string>();
-    for (const v of verses) (v.translationId === EN ? en : pl).set(v.verse, v.text);
+    const read = new Map<number, string>();
+    const alt = new Map<number, string>();
+    for (const v of verses) (v.translationId === READ ? read : alt).set(v.verse, v.text);
 
-    // Parowanie best-effort po numerze wersetu — numeracja WEB i BG nie zawsze się pokrywa.
-    const parallel = [...en.entries()]
+    // Parowanie best-effort po numerze wersetu — numeracja tłumaczeń nie zawsze się pokrywa.
+    const parallel = [...read.entries()]
       .sort((a, b) => a[0] - b[0])
-      .map(([v, text]) => ({ v, en: text, pl: pl.get(v) ?? null }));
-    const extraPl = [...pl.entries()]
-      .filter(([v]) => !en.has(v))
+      .map(([v, text]) => ({ v, text, alt: alt.get(v) ?? null }));
+    const extraAlt = [...alt.entries()]
+      .filter(([v]) => !read.has(v))
       .sort((a, b) => a[0] - b[0])
-      .map(([v, text]) => ({ v, pl: text }));
+      .map(([v, text]) => ({ v, alt: text }));
 
     const idx = books.findIndex((b) => b.id === bookId);
     const prev =
@@ -169,10 +172,10 @@ export class DatabaseStorage implements IStorage {
         totalChapters: book.chapterCount,
       },
       verses: parallel,
-      extraPl,
+      extraAlt,
       commentary: summary ? { en: summary.textEn, pl: summary.textPl } : null,
       nav: { prev, next },
-      translations: { en: toDto(EN), pl: toDto(PL) },
+      translations: { read: toDto(READ), alt: toDto(ALT) },
     };
   }
 
@@ -183,7 +186,7 @@ export class DatabaseStorage implements IStorage {
       prisma.readingPosition.findUnique({ where: { userId } }),
       // Mianownik liczony z bazy, nie hardcodowany — po dodaniu deuterokanonu przeliczy się sam.
       prisma.book.aggregate({ _sum: { chapterCount: true } }),
-      prisma.user.findUnique({ where: { id: userId }, select: { theme: true, role: true, plTranslation: true } }),
+      prisma.user.findUnique({ where: { id: userId }, select: { theme: true, role: true, readTranslation: true, altTranslation: true } }),
     ]);
 
     const totalChapters = totals._sum.chapterCount ?? 0;
@@ -202,7 +205,8 @@ export class DatabaseStorage implements IStorage {
       percent: totalChapters ? Math.round((readCount / totalChapters) * 1000) / 10 : 0,
       favoritesCount,
       theme: user?.theme === "dark" ? "dark" : "light",
-      plTranslation: user?.plTranslation ?? DEFAULT_PL,
+      readTranslation: user?.readTranslation ?? DEFAULT_READ,
+      altTranslation: user?.altTranslation ?? DEFAULT_ALT,
       role: user?.role === "admin" ? "admin" : "user",
     };
   }

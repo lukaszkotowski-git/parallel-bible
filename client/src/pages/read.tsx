@@ -12,7 +12,7 @@ import {
 import { AppHeader, useAuthed } from "@/components/app-header";
 import { ChapterCommentary } from "@/components/chapter-commentary";
 import { SupportNudge } from "@/components/support-nudge";
-import { PlTranslationSelect } from "@/components/pl-translation-select";
+import { TranslationSelects } from "@/components/translation-selects";
 import { ReadingSettingsPopover } from "@/components/reading-settings-popover";
 import { VerseRow } from "@/components/verse-row";
 import { Button } from "@/components/ui/button";
@@ -45,7 +45,7 @@ import {
   type HighlightColor,
 } from "@/lib/api";
 import { saveLocalPosition } from "@/lib/last-position";
-import { usePlTranslation } from "@/lib/pl-translation";
+import { useTranslations } from "@/lib/translations";
 import { queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 
@@ -61,11 +61,11 @@ export default function ReadPage() {
   // Okno „jak Ci się podoba aplikacja?" — pokazuje je serwer w odpowiedzi na zapis rozdziału.
   const [nudge, setNudge] = useState<{ chapters: number } | null>(null);
 
-  const { id: pl } = usePlTranslation();
+  const { read, alt, readLang, altLang } = useTranslations();
   const { data, isLoading, isError, error, refetch } = useQuery<ChapterDto>({
-    queryKey: qk.chapter(bookId, chapter, pl),
-    queryFn: () => fetchChapter(bookId, chapter, pl),
-    placeholderData: keepPreviousData, // przy zmianie tłumaczenia stary tekst zostaje do czasu nowego
+    queryKey: qk.chapter(bookId, chapter, read, alt),
+    queryFn: () => fetchChapter(bookId, chapter, read, alt),
+    placeholderData: keepPreviousData, // przy zmianie tłumaczeń stary tekst zostaje do czasu nowego
     retry: 1, // jedna ponowna próba: chwilowy brak sieci nie powinien od razu pokazywać błędu
   });
 
@@ -77,12 +77,12 @@ export default function ReadPage() {
     for (const ref of [nextRef, prevRef]) {
       if (ref) {
         queryClient.prefetchQuery({
-          queryKey: qk.chapter(ref.book, ref.chapter, pl),
-          queryFn: () => fetchChapter(ref.book, ref.chapter, pl),
+          queryKey: qk.chapter(ref.book, ref.chapter, read, alt),
+          queryFn: () => fetchChapter(ref.book, ref.chapter, read, alt),
         });
       }
     }
-  }, [prevRef?.book, prevRef?.chapter, nextRef?.book, nextRef?.chapter, pl]);
+  }, [prevRef?.book, prevRef?.chapter, nextRef?.book, nextRef?.chapter, read, alt]);
 
   // Trzymamy postęp w cache'u, żeby po akcji dało się wykryć awans na wyższy poziom.
   useQuery({ queryKey: qk.progress, queryFn: fetchProgress, enabled: authed });
@@ -137,7 +137,7 @@ export default function ReadPage() {
     return () => clearInterval(t);
   }, []);
 
-  // Nowy rozdział: zwiń polskie wersety i zapisz ostatnią pozycję czytania.
+  // Nowy rozdział: zwiń odsłonięte tłumaczenia i zapisz ostatnią pozycję czytania.
   // Bez konta nie ma gdzie jej zapisać — samo czytanie działa tak samo.
   useEffect(() => {
     setOpenVerses(new Set());
@@ -250,7 +250,7 @@ export default function ReadPage() {
     invalidateMarks();
   };
 
-  /** Odpowiedź po odsłonięciu PL: „zrozumiałem" albo „musiałem sprawdzić" (to drugie dodaje fiszkę). */
+  /** Odpowiedź po odsłonięciu tłumaczenia: „zrozumiałem" albo „musiałem sprawdzić" (to drugie dodaje fiszkę). */
   const answerCheck = async (v: number, understood: boolean) => {
     updateMarks((m) => ({
       ...m,
@@ -377,8 +377,8 @@ export default function ReadPage() {
                 {data.book.namePl} {data.book.chapter}
               </h1>
               <p className="mt-1 text-xs text-muted-foreground">
-                {data.translations.en.name} ({data.translations.en.shortName}) ·{" "}
-                {data.translations.pl.name} ({data.translations.pl.shortName}) · rozdział{" "}
+                {data.translations.read.name} ({data.translations.read.shortName}) ·{" "}
+                {data.translations.alt.name} ({data.translations.alt.shortName}) · rozdział{" "}
                 {data.book.chapter} z {data.book.totalChapters}
               </p>
 
@@ -394,10 +394,10 @@ export default function ReadPage() {
                   ) : (
                     <ChevronsUpDown className="mr-1.5 h-4 w-4" />
                   )}
-                  {allOpen ? "Zwiń wszystkie PL" : "Rozwiń wszystkie PL"}
+                  {allOpen ? "Zwiń wszystkie tłumaczenia" : "Rozwiń wszystkie tłumaczenia"}
                 </Button>
 
-                <PlTranslationSelect />
+                <TranslationSelects />
 
                 <ReadingSettingsPopover />
 
@@ -428,6 +428,8 @@ export default function ReadPage() {
                 <VerseRow
                   key={verse.v}
                   verse={verse}
+                  readLang={readLang}
+                  altLang={altLang}
                   open={openVerses.has(verse.v)}
                   favorite={favoriteSet.has(verse.v)}
                   highlight={highlightByVerse.get(verse.v)}
@@ -442,24 +444,24 @@ export default function ReadPage() {
                 />
               ))}
 
-              {data.extraPl.length > 0 && (
+              {data.extraAlt.length > 0 && (
                 <div className="mt-6 rounded-lg border border-dashed border-border bg-muted/40 p-4">
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Dodatkowe wersety: {data.translations.pl.name}
+                    Dodatkowe wersety: {data.translations.alt.name}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Numeracja przekładów nie zawsze się pokrywa — te wersety nie mają odpowiednika w WEB.
+                    Numeracja przekładów nie zawsze się pokrywa — te wersety nie mają odpowiednika w {data.translations.read.shortName}.
                   </p>
-                  {data.extraPl.map((e) => (
-                    <p key={e.v} className="verse-pl mt-3">
+                  {data.extraAlt.map((e) => (
+                    <p key={e.v} lang={altLang} className="verse-pl mt-3">
                       <span className="mr-2 not-italic text-verse-number">{e.v}</span>
-                      {e.pl}
+                      {e.alt}
                     </p>
                   ))}
                 </div>
               )}
 
-              {data.commentary && <ChapterCommentary commentary={data.commentary} />}
+              {data.commentary && <ChapterCommentary commentary={data.commentary} readLang={readLang} altLang={altLang} />}
             </div>
 
             {/* Jedna nawigacja: przyklejona do dołu na mobile, w treści na desktopie */}

@@ -15,7 +15,7 @@ const XP_ROWS = [
   { key: "books", label: "Ukończone księgi", hint: `${XP.book} pkt za księgę` },
   { key: "goalDays", label: "Dni z osiągniętym celem", hint: `${XP.goalDay} pkt za dzień` },
   { key: "notes", label: "Notatki", hint: `${XP.note} pkt za notatkę` },
-  { key: "understood", label: "Werset zrozumiany po angielsku", hint: `${XP.understood} pkt za werset` },
+  { key: "understood", label: "Werset zrozumiany bez tłumaczenia", hint: `${XP.understood} pkt za werset` },
   { key: "mastered", label: "Wersety „umiem”", hint: `${XP.mastered} pkt za werset` },
 ] as const;
 

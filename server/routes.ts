@@ -27,7 +27,7 @@ import {
   noteInputSchema,
   planInputSchema,
   themeSchema,
-  plTranslationSchema,
+  translationPrefsSchema,
 } from "@shared/schema";
 import { safeTimeZone } from "@shared/plans";
 import type { SupportConfig } from "@shared/schema";
@@ -97,11 +97,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }),
   );
 
-  // Polskie tłumaczenia do wyboru — publiczne, bo wybór działa także bez konta.
+  // Tłumaczenia do wyboru — publiczne, bo wybór działa także bez konta.
   app.get(
     "/api/translations",
     asyncHandler(async (_req, res) => {
-      res.json(await storage.getPlTranslations());
+      res.json(await storage.getTranslations());
     }),
   );
 
@@ -112,8 +112,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!Number.isInteger(chapter) || chapter < 1) {
         return res.status(400).json({ message: "Nieprawidłowy numer rozdziału" });
       }
-      const pl = typeof req.query.pl === "string" ? req.query.pl : null;
-      const data = await storage.getChapter(String(req.params.book), chapter, pl);
+      const str = (v: unknown) => (typeof v === "string" ? v : null);
+      const data = await storage.getChapter(String(req.params.book), chapter, str(req.query.read), str(req.query.alt));
       if (!data) return res.status(404).json({ message: "Nie znaleziono rozdziału" });
       res.set("Cache-Control", IMMUTABLE);
       res.json(data);
@@ -367,7 +367,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }),
   );
 
-  // ---- nauka: fiszki, werset dnia, odpowiedzi po odsłonięciu PL ----
+  // ---- nauka: fiszki, werset dnia, odpowiedzi po odsłonięciu tłumaczenia ----
 
   app.get(
     "/api/me/learn",
@@ -525,12 +525,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   );
 
   app.put(
-    "/api/me/pl-translation",
+    "/api/me/translations",
     asyncHandler(async (req, res) => {
-      const parsed = plTranslationSchema.safeParse(req.body);
+      const parsed = translationPrefsSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Nieprawidłowe dane" });
-      const ok = await storage.setPlTranslation(await getUserId(req), parsed.data.id);
-      if (!ok) return res.status(404).json({ message: "Nie ma takiego tłumaczenia" });
+      const ok = await storage.setTranslationPrefs(await getUserId(req), parsed.data.read, parsed.data.alt);
+      if (!ok) return res.status(400).json({ message: "Nieprawidłowa para tłumaczeń" });
       res.json({ ok: true });
     }),
   );

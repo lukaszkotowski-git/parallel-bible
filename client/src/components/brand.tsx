@@ -36,7 +36,7 @@ export function Brand({ compact = false }: { compact?: boolean }) {
         Parallel<span className="text-primary"> Bible</span>
       </span>
       {!compact && (
-        <span className="hidden text-xs text-muted-foreground sm:inline">EN · PL</span>
+        <span className="hidden text-xs text-muted-foreground sm:inline">Biblia równoległa</span>
       )}
     </Link>
   );

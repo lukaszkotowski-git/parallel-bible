@@ -11,7 +11,7 @@ export const XP = {
   book: 50, // księga w całości przeczytana „naprawdę"
   goalDay: 5, // dzień, w którym osiągnięto cel dzienny
   note: 2,
-  understood: 1, // werset zrozumiany po angielsku (raz na werset)
+  understood: 1, // werset zrozumiany bez zaglądania do tłumaczenia (raz na werset)
   mastered: 15, // werset „umiem”
 } as const;
 
@@ -190,7 +190,7 @@ export const BADGES: BadgeDef[] = [
   { id: "short-books", name: "Krótkie księgi", description: "Przeczytaj Abdiasza, Filemona, 2 i 3 Jana oraz Judy.", category: "curious", icon: "Feather", target: 5 },
 
   { id: "first-card", name: "Pierwsza fiszka", description: "Dodaj werset do powtórek.", category: "learn", icon: "Layers", target: 1 },
-  { id: "understood-50", name: "Rozumiem po angielsku", description: "Zrozum 50 wersetów bez zaglądania do polskiego.", category: "learn", icon: "Languages", target: 50 },
+  { id: "understood-50", name: "Rozumiem bez tłumaczenia", description: "Zrozum 50 wersetów bez zaglądania do tłumaczenia.", category: "learn", icon: "Languages", target: 50 },
   { id: "reviews-50", name: "Powtórki", description: "Wykonaj 50 powtórek fiszek.", category: "learn", icon: "Repeat", target: 50 },
   { id: "mastered-10", name: "Znam na pamięć", description: "Opanuj 10 wersetów (przycisk „umiem”).", category: "learn", icon: "Brain", target: 10 },
 
@@ -253,8 +253,8 @@ export interface LearnCardDto {
   bookId: string;
   chapter: number;
   verse: number;
-  en: string;
-  pl: string | null;
+  text: string;
+  alt: string | null;
   box: number;
   mastered: boolean;
   dueAt: string;
@@ -272,8 +272,8 @@ export interface VerseOfDayDto {
   bookId: string;
   chapter: number;
   verse: number;
-  en: string;
-  pl: string | null;
+  text: string;
+  alt: string | null;
   inDeck: boolean;
   mastered: boolean;
 }

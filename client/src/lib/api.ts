@@ -58,8 +58,9 @@ export const userTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZo
 
 export const qk = {
   books: ["/api/books"] as const,
-  // `pl` = id polskiego tłumaczenia; serwer zwraca tekst wybranego, więc jest częścią klucza.
-  chapter: (book: string, chapter: number, pl: string) => ["/api/chapter", book, chapter, pl] as const,
+  // Serwer zwraca tekst wybranej pary tłumaczeń, więc oba id są częścią klucza.
+  chapter: (book: string, chapter: number, read: string, alt: string) =>
+    ["/api/chapter", book, chapter, read, alt] as const,
   translations: ["/api/translations"] as const,
   state: ["/api/me/state"] as const,
   read: (book?: string) => ["/api/me/read", book ?? "all"] as const,
@@ -79,13 +80,14 @@ export const qk = {
   adminUsers: (q: string, page: number) => ["/api/admin/users", q, page] as const,
 };
 
-export async function fetchChapter(book: string, chapter: number, pl: string) {
-  const res = await apiRequest("GET", `/api/chapter/${book}/${chapter}?pl=${encodeURIComponent(pl)}`);
+export async function fetchChapter(book: string, chapter: number, read: string, alt: string) {
+  const params = new URLSearchParams({ read, alt });
+  const res = await apiRequest("GET", `/api/chapter/${book}/${chapter}?${params}`);
   return (await res.json()) as ChapterDto;
 }
 
-export async function savePlTranslation(id: string) {
-  await apiRequest("PUT", "/api/me/pl-translation", { id });
+export async function saveTranslationPrefs(read: string, alt: string) {
+  await apiRequest("PUT", "/api/me/translations", { read, alt });
 }
 
 export async function fetchAdminUsers(q: string, page: number) {

@@ -153,7 +153,7 @@ export default function Home() {
           Pismo w dwóch językach
         </h1>
         <p className="mt-2 max-w-prose text-sm text-muted-foreground">
-          Tekst angielski czytasz ciągiem, a polski przekład odsłaniasz kliknięciem w werset.
+          Jedno tłumaczenie czytasz ciągiem, a drugie odsłaniasz kliknięciem w werset.
           Wybierz księgę, żeby zacząć.
         </p>
 
@@ -220,7 +220,7 @@ export default function Home() {
         )}
 
         <p className="mt-12 border-t border-border pt-6 text-xs leading-relaxed text-muted-foreground">
-          Teksty w domenie publicznej: World English Bible (EN) oraz, do wyboru po polsku, Biblia Gdańska (1632) i Biblia Jakuba Wujka (1599).
+          Teksty w domenie publicznej: World English Bible, Biblia Gdańska (1632), Biblia Jakuba Wujka (1599) i Reina-Valera (1909) — parę tłumaczeń wybierasz w czytniku.
           Kanon 66 ksiąg, 1189 rozdziałów.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3">

@@ -146,15 +146,15 @@ function VerseOfDayCard() {
       <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
         <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Werset dnia
       </p>
-      <p className="verse-en mt-2">{v.en}</p>
-      {showPl && v.pl && <p className="verse-pl mt-2 animate-verse-reveal border-l-2 border-primary/40 pl-3">{v.pl}</p>}
+      <p className="verse-en mt-2">{v.text}</p>
+      {showPl && v.alt && <p className="verse-pl mt-2 animate-verse-reveal border-l-2 border-primary/40 pl-3">{v.alt}</p>}
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
         <Link href={chapterHref(v.bookId, v.chapter)} className="text-sm font-medium text-primary underline-offset-4 hover:underline">
           {ref}
         </Link>
-        {v.pl && (
+        {v.alt && (
           <button type="button" onClick={() => setShowPl((s) => !s)} className="rounded text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
-            {showPl ? "Ukryj polski" : "Pokaż po polsku"}
+            {showPl ? "Ukryj tłumaczenie" : "Pokaż tłumaczenie"}
           </button>
         )}
         <span className="flex-1" />

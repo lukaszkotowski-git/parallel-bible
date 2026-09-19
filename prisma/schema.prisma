@@ -12,8 +12,8 @@ datasource db {
 }
 
 model Translation {
-  id        String  @id // "WEB", "BG", "WUJ"
-  language  String // "en" | "pl"
+  id        String  @id // "WEB", "BG", "WUJ", "RV"
+  language  String // kod ISO: "en" | "pl" | "es"
   name      String // "World English Bible"
   shortName String
   year      Int?
@@ -78,7 +78,8 @@ model User {
   name              String
   image             String?
   theme             String           @default("light") // preferencja czytania: "light" | "dark"
-  plTranslation     String           @default("BG") // wybrane tłumaczenie polskie (Translation.id, language "pl")
+  readTranslation   String           @default("WEB") // tłumaczenie czytane ciągiem (Translation.id)
+  altTranslation    String           @default("BG") // tłumaczenie odsłaniane po kliknięciu wersetu (Translation.id)
   showOnLeaderboard Boolean          @default(false) // zgoda na pokazanie imienia w rankingu; domyślnie wyłączona
   // Pytanie „jak Ci się podoba aplikacja" (zachęta do wsparcia): przy ilu przeczytanych rozdziałach
   // ostatnio je pokazano i czy użytkownik wybrał rzadsze przypominanie (co 77 zamiast co 15).

@@ -1,13 +1,14 @@
 /**
- * Tryb nauki: fiszki z wersetów (EN → przypomnij sobie PL) w prostym systemie pudełek
- * Leitnera, „werset dnia" z przeczytanych rozdziałów i odpowiedzi „zrozumiałem po angielsku".
+ * Tryb nauki: fiszki z wersetów (czytane tłumaczenie → przypomnij sobie odsłaniane) w prostym
+ * systemie pudełek Leitnera, „werset dnia" z przeczytanych rozdziałów i odpowiedzi „zrozumiałem".
  */
 import { prisma } from "./db";
 import { dayKey } from "@shared/plans";
+import { DEFAULT_ALT, DEFAULT_READ, resolvePair } from "@shared/translations";
 import type { LearnCardDto, LearnDto, Rating, VerseOfDayDto, VerseRefInput } from "@shared/gamification";
 
-const EN = "WEB";
-const DEFAULT_PL = "BG";
+/** Struktura rozdziałów i wersetów (numeracja) jest wzorowana na WEB, niezależnie od wybranej pary. */
+const REF = "WEB";
 const DAY_MS = 86_400_000;
 const DUE_BATCH = 20;
 /** Odstępy powtórek dla pudełek 1–5 (dni). */
@@ -20,27 +21,32 @@ const after = (ms: number) => new Date(Date.now() + ms);
 type Ref = { bookId: string; chapter: number; verse: number };
 const key = (r: Ref) => `${r.bookId}:${r.chapter}:${r.verse}`;
 
-/** Polskie tłumaczenie wybrane przez użytkownika — fiszki i werset dnia pokazują to samo co czytnik. */
-async function userPl(userId: string): Promise<string> {
-  const u = await prisma.user.findUnique({ where: { id: userId }, select: { plTranslation: true } });
-  return u?.plTranslation ?? DEFAULT_PL;
+type Pair = { read: string; alt: string };
+
+/** Para tłumaczeń wybrana przez użytkownika — fiszki i werset dnia pokazują to samo co czytnik. */
+async function userPair(userId: string): Promise<Pair> {
+  const [u, translations] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { readTranslation: true, altTranslation: true } }),
+    prisma.translation.findMany({ where: { verses: { some: {} } }, select: { id: true } }),
+  ]);
+  return resolvePair(u?.readTranslation ?? DEFAULT_READ, u?.altTranslation ?? DEFAULT_ALT, translations.map((t) => t.id));
 }
 
-async function verseTexts(refs: Ref[], PL: string) {
-  const out = new Map<string, { en: string; pl: string | null }>();
+async function verseTexts(refs: Ref[], pair: Pair) {
+  const out = new Map<string, { text: string; alt: string | null }>();
   if (refs.length === 0) return out;
   const rows = await prisma.verse.findMany({
     where: {
-      translationId: { in: [EN, PL] },
+      translationId: { in: [pair.read, pair.alt] },
       OR: refs.map((r) => ({ bookId: r.bookId, chapter: r.chapter, verse: r.verse })),
     },
     select: { translationId: true, bookId: true, chapter: true, verse: true, text: true },
   });
   for (const v of rows) {
     const k = key(v);
-    const cur = out.get(k) ?? { en: "", pl: null };
-    if (v.translationId === EN) cur.en = v.text;
-    else cur.pl = v.text;
+    const cur = out.get(k) ?? { text: "", alt: null };
+    if (v.translationId === pair.read) cur.text = v.text;
+    else cur.alt = v.text;
     out.set(k, cur);
   }
   return out;
@@ -48,15 +54,15 @@ async function verseTexts(refs: Ref[], PL: string) {
 
 async function toDtos(
   cards: { bookId: string; chapter: number; verse: number; box: number; mastered: boolean; dueAt: Date }[],
-  pl: string,
+  pair: Pair,
 ) {
-  const texts = await verseTexts(cards, pl);
+  const texts = await verseTexts(cards, pair);
   return cards.map<LearnCardDto>((c) => ({
     bookId: c.bookId,
     chapter: c.chapter,
     verse: c.verse,
-    en: texts.get(key(c))?.en ?? "",
-    pl: texts.get(key(c))?.pl ?? null,
+    text: texts.get(key(c))?.text ?? "",
+    alt: texts.get(key(c))?.alt ?? null,
     box: c.box,
     mastered: c.mastered,
     dueAt: c.dueAt.toISOString(),
@@ -68,8 +74,8 @@ export async function getLearn(userId: string): Promise<LearnDto> {
   const all = await prisma.learnCard.findMany({ where: { userId }, orderBy: { dueAt: "asc" } });
   const due = all.filter((c) => c.dueAt <= now).slice(0, DUE_BATCH);
   const dueTotal = all.filter((c) => c.dueAt <= now).length;
-  const pl = await userPl(userId);
-  const [dueDtos, cardDtos] = await Promise.all([toDtos(due, pl), toDtos(all, pl)]);
+  const pair = await userPair(userId);
+  const [dueDtos, cardDtos] = await Promise.all([toDtos(due, pair), toDtos(all, pair)]);
   return {
     due: dueDtos,
     cards: cardDtos,
@@ -78,7 +84,7 @@ export async function getLearn(userId: string): Promise<LearnDto> {
 }
 
 async function assertVerseExists(ref: Ref) {
-  const found = await prisma.verse.findFirst({ where: { translationId: EN, ...ref }, select: { id: true } });
+  const found = await prisma.verse.findFirst({ where: { translationId: REF, ...ref }, select: { id: true } });
   if (!found) throw httpError(404, "Nie znaleziono wersetu");
 }
 
@@ -137,7 +143,7 @@ export async function setMastered(userId: string, ref: VerseRefInput, mastered: 
   });
 }
 
-/** Odpowiedź po odsłonięciu polskiego werseta. „Musiałem sprawdzić" dorzuca werset do powtórek. */
+/** Odpowiedź po odsłonięciu tłumaczenia. „Musiałem sprawdzić" dorzuca werset do powtórek. */
 export async function checkVerse(userId: string, ref: VerseRefInput, understood: boolean) {
   await assertVerseExists(ref);
   await prisma.verseCheck.upsert({
@@ -178,7 +184,7 @@ export async function verseOfDay(userId: string, tz: string): Promise<VerseOfDay
   const seed = `${userId}:${dayKey(new Date(), tz)}`;
   const pick = pool[hash(seed) % pool.length]!;
   const verses = await prisma.verse.findMany({
-    where: { translationId: EN, bookId: pick.bookId, chapter: pick.chapter },
+    where: { translationId: REF, bookId: pick.bookId, chapter: pick.chapter },
     select: { verse: true },
     orderBy: { verse: "asc" },
   });
@@ -186,9 +192,9 @@ export async function verseOfDay(userId: string, tz: string): Promise<VerseOfDay
   const ref: Ref = { bookId: pick.bookId, chapter: pick.chapter, verse: verses[hash(`${seed}:v`) % verses.length]!.verse };
 
   const [texts, card] = await Promise.all([
-    userPl(userId).then((pl) => verseTexts([ref], pl)),
+    userPair(userId).then((pair) => verseTexts([ref], pair)),
     prisma.learnCard.findUnique({ where: { userId_bookId_chapter_verse: { userId, ...ref } } }),
   ]);
   const t = texts.get(key(ref));
-  return { ...ref, en: t?.en ?? "", pl: t?.pl ?? null, inDeck: !!card, mastered: card?.mastered ?? false };
+  return { ...ref, text: t?.text ?? "", alt: t?.alt ?? null, inDeck: !!card, mastered: card?.mastered ?? false };
 }

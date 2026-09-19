@@ -1,5 +1,5 @@
 /**
- * Import tłumaczeń public domain do bazy (WEB, Biblia Gdańska, Biblia Wujka).
+ * Import tłumaczeń public domain do bazy (WEB, Biblia Gdańska, Biblia Wujka, Reina-Valera).
  *
  *   npm run import:bible                    # pobiera dane z GitHuba (midvash/bible-data)
  *   BIBLE_DATA_DIR=/ścieżka npm run import:bible   # import z lokalnego klona repo
@@ -87,6 +87,18 @@ const TRANSLATIONS: TranslationSpec[] = [
     // Numeracja psalmów w źródle jest z Wulgaty — loader dopasowuje ją do WEB.
     load: async () => (await loadWujek(await loadSource(TRANSLATIONS[0]))) as SourceBible,
   },
+  {
+    id: "RV",
+    lang: "es",
+    slug: "rv",
+    name: "Reina-Valera 1909",
+    shortName: "RV1909",
+    year: 1909,
+    sourceUrl: "https://github.com/scrollmapper/bible_databases",
+    isDefault: false,
+    minVerses: 30000,
+    load: loadReinaValera,
+  },
 ];
 
 const sourceCache = new Map<string, Promise<SourceBible>>();
@@ -99,6 +111,45 @@ function loadSource(spec: TranslationSpec): Promise<SourceBible> {
     sourceCache.set(spec.id, p);
   }
   return p;
+}
+
+/**
+ * Reina-Valera 1909 (domena publiczna) z scrollmapper/bible_databases. Nazwy ksiąg w źródle są
+ * angielskie i nie pasują do naszych id, więc mapujemy po kolejności kanonu (weryfikowanej liczbą
+ * ksiąg i rozdziałów). Nieliczne puste wersety (tekst krytyczny bez wstawek) pomijamy.
+ */
+const RV_URL =
+  process.env.RV_URL ??
+  "https://raw.githubusercontent.com/scrollmapper/bible_databases/master/formats/json/SpaRV.json";
+
+async function loadReinaValera(): Promise<SourceBible> {
+  let raw: { books: { chapters: { chapter: number; verses: { verse: number; text: string }[] }[] }[] };
+  if (process.env.RV_FILE) {
+    raw = JSON.parse(await readFile(process.env.RV_FILE, "utf8"));
+  } else {
+    const res = await fetch(RV_URL);
+    if (!res.ok) throw new Error(`Pobieranie ${RV_URL} nie powiodło się: ${res.status}`);
+    raw = (await res.json()) as typeof raw;
+  }
+  if (raw.books.length !== BOOKS.length) {
+    throw new Error(`Reina-Valera: ${raw.books.length} ksiąg w źródle zamiast ${BOOKS.length}`);
+  }
+  return {
+    version: "SpaRV",
+    name: "Reina-Valera 1909",
+    language: "es",
+    license: "public domain",
+    books: raw.books.map((b, i) => ({
+      book: BOOKS[i].id,
+      bookId: i + 1,
+      englishName: BOOKS[i].nameEn,
+      testament: BOOKS[i].testament,
+      chapters: b.chapters.map((c) => ({
+        chapter: c.chapter,
+        verses: c.verses.filter((v) => v.text.trim()).map((v) => ({ number: v.verse, text: v.text })),
+      })),
+    })),
+  };
 }
 
 async function loadRemote(spec: TranslationSpec): Promise<SourceBible> {

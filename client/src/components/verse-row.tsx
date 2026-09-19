@@ -21,13 +21,16 @@ const SWATCH: Record<HighlightColor, string> = {
 
 interface VerseRowProps {
   verse: ParallelVerse;
+  /** Kody języków (ISO) — do atrybutu `lang`, żeby czytniki ekranu i dzielenie wyrazów działały poprawnie. */
+  readLang?: string;
+  altLang?: string;
   open: boolean;
   favorite: boolean;
   highlight?: HighlightColor;
   note?: string;
   onToggle: () => void;
   onToggleFavorite: () => void;
-  /** Tryb nauki (tylko zalogowani): odpowiedź po odsłonięciu PL i stan fiszki. */
+  /** Tryb nauki (tylko zalogowani): odpowiedź po odsłonięciu tłumaczenia i stan fiszki. */
   learn?: { checked: boolean | undefined; inDeck: boolean };
   onCheck?: (understood: boolean) => void;
   onToggleCard?: () => void;
@@ -37,12 +40,14 @@ interface VerseRowProps {
 }
 
 /**
- * Jeden werset. Kliknięcie/tap w tekst odsłania przekład polski (hover celowo nie jest
+ * Jeden werset. Kliknięcie/tap w tekst odsłania drugie tłumaczenie (hover celowo nie jest
  * mechanizmem — na dotyku nie istnieje). Akcje (ulubione, wyróżnienie, notatka) są
  * rodzeństwem obszaru klikalnego, a nie jego dziećmi, żeby nie zagnieżdżać kontrolek.
  */
 export function VerseRow({
   verse,
+  readLang,
+  altLang,
   open,
   favorite,
   highlight,
@@ -89,7 +94,7 @@ export function VerseRow({
         role="button"
         tabIndex={0}
         aria-expanded={open}
-        aria-label={`Werset ${verse.v}${status.length ? `, ${status.join(", ")}` : ""}. ${open ? "Ukryj" : "Pokaż"} przekład polski`}
+        aria-label={`Werset ${verse.v}${status.length ? `, ${status.join(", ")}` : ""}. ${open ? "Ukryj" : "Pokaż"} tłumaczenie`}
         onClick={onToggle}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
@@ -107,14 +112,15 @@ export function VerseRow({
         </span>
 
         <div className="min-w-0">
-          <p className="verse-en">{verse.en}</p>
+          <p className="verse-en" lang={readLang}>{verse.text}</p>
 
           {open && (
             <p
+              lang={altLang}
               className="verse-pl mt-2 animate-verse-reveal border-l-2 border-primary/40 pl-3"
               data-testid={`verse-pl-${verse.v}`}
             >
-              {verse.pl ?? (
+              {verse.alt ?? (
                 <span className="text-xs not-italic text-muted-foreground">
                   Brak odpowiednika w numeracji tego tłumaczenia — zajrzyj do sąsiednich wersetów.
                 </span>
@@ -213,12 +219,12 @@ export function VerseRow({
         </Popover>
       </div>
 
-      {open && learn && verse.pl && onCheck && (
+      {open && learn && verse.alt && onCheck && (
         <fieldset
           className="col-start-2 m-0 mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 border-0 p-0 text-xs text-muted-foreground"
-          aria-label={`Czy rozumiesz werset ${verse.v} po angielsku?`}
+          aria-label={`Czy rozumiesz werset ${verse.v} bez tłumaczenia?`}
         >
-          <span>Zrozumiałeś po angielsku?</span>
+          <span>Zrozumiałeś bez tłumaczenia?</span>
           {[
             { value: true, label: "Tak" },
             { value: false, label: "Musiałem sprawdzić" },

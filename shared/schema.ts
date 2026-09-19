@@ -18,11 +18,14 @@ export interface BookDto {
   chapterCount: number;
 }
 
-/** Pojedynczy werset w widoku równoległym. `pl === null` = brak odpowiednika numeracji. */
+/**
+ * Pojedynczy werset w widoku równoległym: `text` to tłumaczenie czytane ciągiem, `alt` to
+ * odsłaniane po kliknięciu. `alt === null` = brak odpowiednika numeracji.
+ */
 export interface ParallelVerse {
   v: number;
-  en: string;
-  pl: string | null;
+  text: string;
+  alt: string | null;
 }
 
 export interface ChapterRef {
@@ -40,16 +43,17 @@ export interface ChapterDto {
     totalChapters: number;
   };
   verses: ParallelVerse[];
-  /** Wersety obecne po polsku, których nie ma w numeracji angielskiej (ogon rozdziału). */
-  extraPl: { v: number; pl: string }[];
-  /** Krótkie streszczenie rozdziału (PL/EN), wygenerowane offline. `null` = jeszcze brak. */
+  /** Wersety obecne tylko w tłumaczeniu odsłanianym, bez odpowiednika w czytanym (ogon rozdziału). */
+  extraAlt: { v: number; alt: string }[];
+  /** Krótkie streszczenie rozdziału (PL/EN), wygenerowane offline — tylko w tych dwóch językach. */
   commentary: { en: string; pl: string } | null;
   nav: { prev: ChapterRef | null; next: ChapterRef | null };
-  translations: { en: TranslationDto; pl: TranslationDto };
+  translations: { read: TranslationDto; alt: TranslationDto };
 }
 
 export interface TranslationDto {
   id: string;
+  language: string; // kod ISO: "en" | "pl" | "es"
   name: string;
   shortName: string;
   year: number | null;
@@ -65,7 +69,8 @@ export interface UserStateDto {
   percent: number; // 0–100, zaokrąglone do 1 miejsca
   favoritesCount: number;
   theme: "light" | "dark";
-  plTranslation: string; // Translation.id wybranego tłumaczenia polskiego
+  readTranslation: string; // Translation.id czytane ciągiem
+  altTranslation: string; // Translation.id odsłaniane po kliknięciu
   role: "user" | "admin";
 }
 
@@ -95,7 +100,10 @@ export const bookReadSchema = z.object({
 
 export const themeSchema = z.object({ theme: z.enum(["light", "dark"]) });
 
-export const plTranslationSchema = z.object({ id: z.string().min(1).max(16) });
+export const translationPrefsSchema = z.object({
+  read: z.string().min(1).max(16),
+  alt: z.string().min(1).max(16),
+});
 
 export const favoriteInputSchema = chapterRefSchema.extend({
   verseFrom: z.number().int().positive(),
@@ -124,7 +132,7 @@ export interface VerseNoteDto {
 export interface ChapterMarksDto {
   highlights: HighlightDto[];
   notes: VerseNoteDto[];
-  /** Odpowiedzi „zrozumiałem po angielsku / musiałem sprawdzić" (tryb nauki). */
+  /** Odpowiedzi „zrozumiałem / musiałem sprawdzić" (tryb nauki). */
   checks: { verse: number; understood: boolean }[];
   /** Numery wersetów tego rozdziału, które są w talii fiszek. */
   cards: number[];

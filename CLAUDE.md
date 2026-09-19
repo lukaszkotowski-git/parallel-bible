@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Parallel Bible — a Polish/English parallel Scripture reader. English (World English Bible) reads
-continuously; the Polish translation (Biblia Gdańska, 1632) is revealed per-verse on click. Full
+Parallel Bible — a parallel Scripture reader. One translation reads continuously ("czytam", default
+World English Bible); a second one is revealed per-verse on click ("tłumaczenie", default Biblia
+Gdańska, 1632). Both are user-selectable from any imported translation. Full
 66-book Protestant canon, 1189 chapters, ~62k verses. UI text and code comments are in Polish.
-The reader can pick the Polish translation: Biblia Gdańska (`BG`, default) or Biblia Jakuba Wujka (`WUJ`).
+Translations: `WEB` (en), `BG` and `WUJ` (Biblia Jakuba Wujka, pl), `RV` (Reina-Valera 1909, es).
 
 ## Commands
 
@@ -81,13 +82,20 @@ routes, API paths, and the `shared/books.ts` reference table all key off it.
   (`chapterRefSchema`, `favoriteInputSchema`, `themeSchema`), used by both `server/routes.ts` and
   the client's `lib/api.ts`.
 
-**Polish translation choice**: `Translation` rows with `language = "pl"` are the selectable options
-(`GET /api/translations`, public). The chapter endpoint takes `?pl=<id>` (unknown ids fall back to `BG`);
-the client keeps the choice in `localStorage` key `pb-pl`, overridden by `User.plTranslation` once
-logged in (same pattern as theme; `usePlTranslation()` in `client/src/lib/pl-translation.ts`). The
-chapter query key includes the translation id. Flashcards/verse of the day (`server/learn.ts`) follow
-the user's choice too. To add another public-domain Polish translation, add a `TranslationSpec` in
-`scripts/import-bible.ts` — the import skips translations already in the DB, so it only loads the new one.
+**Translation pair**: every `Translation` row with verses is selectable (`GET /api/translations`,
+public). The chapter endpoint takes `?read=<id>&alt=<id>`; `resolvePair()` in `shared/translations.ts`
+falls back to WEB/BG for unknown ids and forces the two to differ (used by server and client alike).
+The client keeps the choice in `localStorage` (`pb-read`, `pb-alt`), overridden by
+`User.readTranslation`/`altTranslation` once logged in (same pattern as theme; `useTranslations()` in
+`client/src/lib/translations.ts`; picking the other slot's translation swaps them). The chapter query key
+includes both ids. DTO fields are language-neutral (`text` = read, `alt` = revealed). Flashcards/verse
+of the day (`server/learn.ts`) follow the user's pair. Chapter summaries (`ChapterSummary`) exist only
+in en/pl, so `ChapterCommentary` shows only those languages present in the pair (hidden when neither is en or pl).
+Chapter/verse *structure* (read counts, learn-card validation) is anchored to WEB. To add another
+public-domain translation, add a `TranslationSpec` in `scripts/import-bible.ts` (plus a `LANGUAGE_LABELS`
+entry for a new language) — the import skips translations already in the DB, so it only loads the new one.
+`RV` comes from `scrollmapper/bible_databases` (`SpaRV.json`), mapped to books by canon order; ~18 empty
+source verses are skipped. Do not substitute RVR1960 or newer Reina-Valera revisions (copyrighted).
 
 **Wujek is parsed, not downloaded as JSON**: `scripts/wujek.ts` fetches the Wikisource EPUB
 (`syndereza/biblia-wujka`, override with `WUJEK_EPUB=/path` or `WUJEK_EPUB_URL`) and parses it locally

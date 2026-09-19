@@ -28,7 +28,7 @@ const RATING_BUTTONS: { rating: Rating; label: string; hint: string }[] = [
   { rating: "easy", label: "Łatwo", hint: "wróci dużo później" },
 ];
 
-/** Jedna sesja powtórek: EN na awersie, po „Pokaż polski" ocena. „Nie pamiętałem" wraca na koniec kolejki. */
+/** Jedna sesja powtórek: czytane tłumaczenie na awersie, po „Pokaż tłumaczenie" ocena. „Nie pamiętałem" wraca na koniec kolejki. */
 function ReviewSession({ initial, onFinish }: { initial: LearnCardDto[]; onFinish: () => void }) {
   const { toast } = useToast();
   const [queue, setQueue] = useState(initial);
@@ -71,12 +71,12 @@ function ReviewSession({ initial, onFinish }: { initial: LearnCardDto[]; onFinis
         <p className="text-xs uppercase tracking-wide text-muted-foreground">
           {chapterLabel(card.bookId, card.chapter)}:{card.verse}
         </p>
-        <p className="verse-en mt-2">{card.en}</p>
+        <p className="verse-en mt-2">{card.text}</p>
 
         {revealed ? (
           <>
             <p className="verse-pl mt-4 animate-verse-reveal border-l-2 border-primary/40 pl-3" data-testid="review-pl">
-              {card.pl ?? "Brak odpowiednika w numeracji wybranego tłumaczenia."}
+              {card.alt ?? "Brak odpowiednika w numeracji wybranego tłumaczenia."}
             </p>
             <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {RATING_BUTTONS.map((b) => (
@@ -89,9 +89,9 @@ function ReviewSession({ initial, onFinish }: { initial: LearnCardDto[]; onFinis
           </>
         ) : (
           <>
-            <p className="mt-4 text-sm text-muted-foreground">Spróbuj przypomnieć sobie polski przekład, potem sprawdź.</p>
+            <p className="mt-4 text-sm text-muted-foreground">Spróbuj przypomnieć sobie drugie tłumaczenie, potem sprawdź.</p>
             <Button className="mt-3" onClick={() => setRevealed(true)} data-testid="button-reveal">
-              Pokaż polski
+              Pokaż tłumaczenie
             </Button>
           </>
         )}
@@ -166,7 +166,7 @@ function LearnContent() {
       ) : (
         <p className="mt-6 rounded-xl border border-dashed border-border bg-muted/40 p-4 text-center text-sm text-muted-foreground">
           {totals.total === 0
-            ? "Talia jest pusta. W trakcie czytania odsłoń polski werset i wybierz „Musiałem sprawdzić” albo dodaj werset z menu „⋯” do powtórek."
+            ? "Talia jest pusta. W trakcie czytania odsłoń tłumaczenie wersetu i wybierz „Musiałem sprawdzić” albo dodaj werset z menu „⋯” do powtórek."
             : "Na dziś nic do powtórki. Wracaj jutro."}
         </p>
       )}
@@ -181,7 +181,7 @@ function LearnContent() {
                   <Link href={chapterHref(c.bookId, c.chapter)} className="text-sm font-medium text-primary underline-offset-4 hover:underline">
                     {chapterLabel(c.bookId, c.chapter)}:{c.verse}
                   </Link>
-                  <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">{c.en}</p>
+                  <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">{c.text}</p>
                 </div>
                 <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-xs", c.mastered ? "bg-read-marker/15 text-read-marker" : "bg-muted text-muted-foreground")}>
                   {c.mastered ? "umiem" : `pudełko ${c.box}/5`}
@@ -210,7 +210,7 @@ export default function LearnPage() {
           <Layers className="h-5 w-5 text-primary" aria-hidden="true" /> Nauka wersetów
         </h1>
         <p className="mt-1.5 max-w-prose text-sm text-muted-foreground">
-          Werset po angielsku, a Ty przypominasz sobie polski. Im lepiej pamiętasz, tym rzadziej wraca.
+          Widzisz werset w jednym tłumaczeniu, a Ty przypominasz sobie drugie. Im lepiej pamiętasz, tym rzadziej wraca.
         </p>
         <RequireAuth what="Nauka wersetów">
           <LearnContent />
