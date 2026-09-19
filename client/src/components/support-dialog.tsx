@@ -62,10 +62,50 @@ export function SupportDisclaimer() {
   );
 }
 
+/** Proponowane kwoty (zł) — tylko podpowiedź, wpłacić można dowolną. */
+const SUGGESTED_AMOUNTS = [5, 10, 30, 77] as const;
+
+/** Kafelki z proponowanymi kwotami; wybrana kwota pojawia się niżej jako pole do skopiowania. */
+function AmountTiles({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
+  return (
+    <fieldset className="m-0 min-w-0 border-0 p-0" aria-label="Proponowane kwoty">
+      <p className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">Proponowana kwota</p>
+      <div className="grid grid-cols-4 gap-2">
+        {SUGGESTED_AMOUNTS.map((amount) => {
+          const selected = value === amount;
+          return (
+            <button
+              key={amount}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => onChange(selected ? null : amount)}
+              className={cn(
+                "flex aspect-square flex-col items-center justify-center rounded-lg border transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                selected
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border bg-muted/40 text-foreground hover:border-primary/40 hover:bg-primary/5",
+              )}
+              data-testid={`amount-${amount}`}
+            >
+              <span className="font-display text-xl font-bold leading-none tabular-nums">{amount}</span>
+              <span className="mt-1 text-xs text-muted-foreground">zł</span>
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
 /** Pola do skopiowania: tytuł, BLIK na telefon, numer konta, odbiorca. Współdzielone z oknem po 15 rozdziałach. */
 export function SupportRows({ support }: { support: SupportConfig }) {
+  const [amount, setAmount] = useState<number | null>(null);
   return (
     <div className="space-y-3">
+      <AmountTiles value={amount} onChange={setAmount} />
+      {amount !== null && (
+        <CopyRow label="Kwota" display={`${amount} zł`} copy={String(amount)} testId="support-amount" />
+      )}
       <CopyRow label="Tytuł przelewu" display={support.title} copy={support.title} testId="support-title" />
       {support.phone && (
         <CopyRow label="BLIK na numer telefonu" display={formatPhone(support.phone)} copy={support.phone} testId="support-phone" />
