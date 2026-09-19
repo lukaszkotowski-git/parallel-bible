@@ -85,6 +85,12 @@ export const chapterRefSchema = z.object({
 });
 export type ChapterRefInput = z.infer<typeof chapterRefSchema>;
 
+/** Zbiorcze oznaczenie całej księgi: read=true zaznacza wszystkie rozdziały, false odznacza. */
+export const bookReadSchema = z.object({
+  bookId: z.string().min(1).max(16),
+  read: z.boolean(),
+});
+
 export const themeSchema = z.object({ theme: z.enum(["light", "dark"]) });
 
 export const favoriteInputSchema = chapterRefSchema.extend({

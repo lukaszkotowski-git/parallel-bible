@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { getUserId } from "./db";
 import { googleEnabled, requireAuth } from "./auth";
 import {
+  bookReadSchema,
   chapterRefSchema,
   favoriteInputSchema,
   highlightInputSchema,
@@ -103,6 +104,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const parsed = chapterRefSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Nieprawidłowe dane" });
       await storage.unmarkRead(await getUserId(req), parsed.data.bookId, parsed.data.chapter);
+      res.json({ ok: true });
+    }),
+  );
+
+  app.put(
+    "/api/me/read/book",
+    asyncHandler(async (req, res) => {
+      const parsed = bookReadSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Nieprawidłowe dane" });
+      const ok = await storage.setBookRead(await getUserId(req), parsed.data.bookId, parsed.data.read);
+      if (!ok) return res.status(404).json({ message: "Nie znaleziono księgi" });
       res.json({ ok: true });
     }),
   );

@@ -104,6 +104,10 @@ export async function unmarkRead(bookId: string, chapter: number) {
   await apiRequest("DELETE", "/api/me/read", { bookId, chapter });
 }
 
+export async function setBookRead(bookId: string, read: boolean) {
+  await apiRequest("PUT", "/api/me/read/book", { bookId, read });
+}
+
 export async function savePosition(bookId: string, chapter: number) {
   await apiRequest("PUT", "/api/me/position", { bookId, chapter });
 }

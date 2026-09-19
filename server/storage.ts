@@ -29,6 +29,7 @@ export interface IStorage {
   markRead(userId: string, bookId: string, chapter: number): Promise<void>;
   unmarkRead(userId: string, bookId: string, chapter: number): Promise<void>;
   setPosition(userId: string, bookId: string, chapter: number): Promise<void>;
+  setBookRead(userId: string, bookId: string, read: boolean): Promise<boolean>;
   getFavorites(userId: string, bookId?: string, chapter?: number): Promise<FavoriteDto[]>;
   addFavorite(userId: string, input: FavoriteInput): Promise<FavoriteDto>;
   removeFavorite(userId: string, bookId: string, chapter: number, verseFrom: number): Promise<void>;
@@ -180,6 +181,21 @@ export class DatabaseStorage implements IStorage {
 
   async unmarkRead(userId: string, bookId: string, chapter: number) {
     await prisma.readChapter.deleteMany({ where: { userId, bookId, chapter } });
+  }
+
+  /** Zwraca false, gdy księga nie istnieje. Zaznaczenie nie rusza readAt już przeczytanych rozdziałów. */
+  async setBookRead(userId: string, bookId: string, read: boolean) {
+    const book = await prisma.book.findUnique({ where: { id: bookId } });
+    if (!book) return false;
+    if (read) {
+      await prisma.readChapter.createMany({
+        data: Array.from({ length: book.chapterCount }, (_, i) => ({ userId, bookId, chapter: i + 1 })),
+        skipDuplicates: true,
+      });
+    } else {
+      await prisma.readChapter.deleteMany({ where: { userId, bookId } });
+    }
+    return true;
   }
 
   async setPosition(userId: string, bookId: string, chapter: number) {

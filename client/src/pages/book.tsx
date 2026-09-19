@@ -1,10 +1,11 @@
 import { Link, useParams } from "wouter";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Check } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { ArrowLeft, Check, CheckCheck, RotateCcw } from "lucide-react";
 import { AppHeader, useAuthed, useUserState } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { qk, fetchReadChapters, type BookDto } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+import { fetchReadChapters, invalidateUserState, qk, setBookRead, type BookDto } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export default function BookPage() {
@@ -20,6 +21,16 @@ export default function BookPage() {
     enabled: authed,
   });
   const { data: state } = useUserState();
+
+  const { toast } = useToast();
+  const bulk = useMutation({
+    mutationFn: (read: boolean) => setBookRead(bookId, read),
+    onSuccess: (_d, read) => {
+      invalidateUserState();
+      toast({ title: read ? "Oznaczono całą księgę jako przeczytaną" : "Odznaczono całą księgę", duration: 3000 });
+    },
+    onError: () => toast({ title: "Nie udało się zapisać", variant: "destructive", duration: 4000 }),
+  });
 
   const book = books?.find((b) => b.id === bookId);
   const readSet = new Set((read ?? []).map((r) => r.chapter));
@@ -66,6 +77,35 @@ export default function BookPage() {
               {book.nameEn} · {book.chapterCount} rozdziałów · przeczytane{" "}
               <span className="tabular-nums text-read-marker">{readSet.size}</span>
             </p>
+
+            {authed && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {readSet.size < book.chapterCount && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={bulk.isPending}
+                    onClick={() => bulk.mutate(true)}
+                    data-testid="button-mark-book-read"
+                  >
+                    <CheckCheck className="mr-1.5 h-4 w-4" /> Oznacz całą księgę jako przeczytaną
+                  </Button>
+                )}
+                {readSet.size > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={bulk.isPending}
+                    onClick={() => {
+                      if (window.confirm(`Odznaczyć wszystkie przeczytane rozdziały księgi „${book.namePl}"?`)) bulk.mutate(false);
+                    }}
+                    data-testid="button-unmark-book-read"
+                  >
+                    <RotateCcw className="mr-1.5 h-4 w-4" /> Odznacz całą księgę
+                  </Button>
+                )}
+              </div>
+            )}
 
             <div className="mt-6 grid grid-cols-5 gap-2 sm:grid-cols-8 md:grid-cols-10">
               {Array.from({ length: book.chapterCount }, (_, i) => i + 1).map((n) => {
