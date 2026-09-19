@@ -3,6 +3,7 @@ import type { Server } from "node:http";
 import { storage } from "./storage";
 import { getUserId } from "./db";
 import { googleEnabled, requireAuth } from "./auth";
+import { mailEnabled } from "./mail";
 import {
   bookReadSchema,
   chapterRefSchema,
@@ -51,7 +52,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   );
 
   // Co klient ma pokazać na ekranie logowania (publiczne, bez sesji).
-  app.get("/api/config", (_req, res) => res.json({ google: googleEnabled }));
+  app.get("/api/config", (_req, res) => res.json({ google: googleEnabled, mail: mailEnabled }));
 
   // ---- stan użytkownika ----
   // Jedna bramka na cały prefiks: bez sesji te trasy zwracają 401, a handlery

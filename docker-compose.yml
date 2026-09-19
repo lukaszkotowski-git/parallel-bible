@@ -31,6 +31,12 @@ services:
       # Puste = logowanie tylko e-mailem i hasłem.
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
     ports:
       # Dokploy zwykle sam podpina Traefika — wtedy ten mapping można usunąć.
       - "${APP_PORT:-5000}:5000"

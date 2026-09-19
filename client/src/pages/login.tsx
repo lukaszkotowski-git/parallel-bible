@@ -1,20 +1,35 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, MailCheck } from "lucide-react";
 import { BrandMark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { OAUTH_CALLBACK_URL, fetchAuthConfig, signIn, signUp } from "@/lib/auth";
+import {
+  OAUTH_CALLBACK_URL,
+  RESET_REDIRECT_URL,
+  VERIFIED_CALLBACK_URL,
+  authClient,
+  fetchAuthConfig,
+  signIn,
+  signUp,
+} from "@/lib/auth";
 import { invalidateUserState } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-type Mode = "login" | "register";
+type Mode = "login" | "register" | "forgot";
+
+/** Po wysłaniu maila pokazujemy potwierdzenie zamiast formularza. */
+type Sent = { kind: "verify" | "reset"; email: string };
+
+const RESEND_COOLDOWN_S = 60;
 
 /** Komunikaty Better Auth są po angielsku — tłumaczymy te, które realnie widać. */
 function translateError(message?: string) {
   const m = (message ?? "").toLowerCase();
+  if (m.includes("not verified")) return "Adres e-mail nie został jeszcze potwierdzony — wysłaliśmy nowy link.";
+  if (m.includes("too many")) return "Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie.";
   if (m.includes("invalid email or password")) return "Nieprawidłowy e-mail lub hasło.";
   if (m.includes("already exists") || m.includes("existing email"))
     return "Konto z tym adresem już istnieje — zaloguj się.";
@@ -31,6 +46,15 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState<Sent | null>(null);
+  const [cooldown, setCooldown] = useState(0);
+  const [needsVerification, setNeedsVerification] = useState(false);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
 
   const { data: config } = useQuery({ queryKey: ["auth-config"], queryFn: fetchAuthConfig });
 
@@ -38,18 +62,61 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
     setBusy(true);
+    setNeedsVerification(false);
+
+    if (mode === "forgot") {
+      // Odpowiedź jest taka sama, gdy konta nie ma — nie zdradzamy, kto ma konto.
+      const res = await authClient.requestPasswordReset({ email, redirectTo: RESET_REDIRECT_URL });
+      setBusy(false);
+      if (res.error) return setError(translateError(res.error.message));
+      setSent({ kind: "reset", email });
+      setCooldown(RESEND_COOLDOWN_S);
+      return;
+    }
+
     const res =
       mode === "login"
-        ? await signIn.email({ email, password })
-        : await signUp.email({ email, password, name: name.trim() || email.split("@")[0] });
+        ? await signIn.email({ email, password, callbackURL: VERIFIED_CALLBACK_URL })
+        : await signUp.email({
+            email,
+            password,
+            name: name.trim() || email.split("@")[0],
+            callbackURL: VERIFIED_CALLBACK_URL,
+          });
     setBusy(false);
 
     if (res.error) {
-      setError(translateError(res.error.message));
+      const unverified = res.error.status === 403 || res.error.code === "EMAIL_NOT_VERIFIED";
+      setNeedsVerification(unverified);
+      setError(translateError(unverified ? "not verified" : res.error.message));
+      if (unverified) setCooldown(RESEND_COOLDOWN_S);
+      return;
+    }
+    // Serwer z wymogiem potwierdzenia nie zakłada sesji — brak tokenu = czekamy na link z maila.
+    if (mode === "register" && res.data && !("token" in res.data && res.data.token)) {
+      setSent({ kind: "verify", email });
+      setCooldown(RESEND_COOLDOWN_S);
       return;
     }
     invalidateUserState();
     navigate("/");
+  };
+
+  const resend = async () => {
+    if (!sent && !needsVerification) return;
+    const target = sent?.email ?? email;
+    setCooldown(RESEND_COOLDOWN_S);
+    const res =
+      sent?.kind === "reset"
+        ? await authClient.requestPasswordReset({ email: target, redirectTo: RESET_REDIRECT_URL })
+        : await authClient.sendVerificationEmail({ email: target, callbackURL: VERIFIED_CALLBACK_URL });
+    if (res.error) setError(translateError(res.error.message));
+  };
+
+  const switchMode = (next: Mode) => {
+    setMode(next);
+    setError(null);
+    setNeedsVerification(false);
   };
 
   const googleSignIn = async () => {
@@ -71,14 +138,62 @@ export default function LoginPage() {
         <div className="rounded-xl border border-card-border bg-card p-6 shadow-xs">
           <BrandMark className="h-7 w-7 text-foreground" />
           <h1 className="mt-3 font-display text-xl font-bold leading-tight">
-            {mode === "login" ? "Zaloguj się" : "Załóż konto"}
+            {sent
+              ? "Sprawdź skrzynkę"
+              : mode === "login"
+                ? "Zaloguj się"
+                : mode === "register"
+                  ? "Załóż konto"
+                  : "Reset hasła"}
           </h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
-            Tekst czytasz bez konta. Logowanie zapisuje postęp, ulubione wersety i motyw —
-            i synchronizuje je między telefonem a laptopem.
+            {mode === "forgot" && !sent
+              ? "Podaj adres e-mail konta — wyślemy link do ustawienia nowego hasła."
+              : !sent &&
+                "Tekst czytasz bez konta. Logowanie zapisuje postęp, ulubione wersety i motyw — i synchronizuje je między telefonem a laptopem."}
           </p>
 
-          {config?.google && (
+          {sent && (
+            <div className="mt-5 space-y-4" role="status" data-testid="text-mail-sent">
+              <div className="flex gap-3 rounded-lg bg-primary/10 p-3 text-sm">
+                <MailCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+                <p>
+                  {sent.kind === "verify" ? (
+                    <>
+                      Wysłaliśmy link potwierdzający na <strong className="break-all">{sent.email}</strong>.
+                      Kliknij go, żeby aktywować konto (ważny 1 godzinę).
+                    </>
+                  ) : (
+                    <>
+                      Jeśli konto z adresem <strong className="break-all">{sent.email}</strong> istnieje,
+                      wysłaliśmy na nie link do ustawienia nowego hasła (ważny 1 godzinę).
+                    </>
+                  )}
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">Nie ma wiadomości? Zajrzyj do folderu ze spamem.</p>
+              {error && (
+                <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {error}
+                </p>
+              )}
+              <Button type="button" variant="outline" className="w-full" disabled={cooldown > 0} onClick={resend} data-testid="button-resend">
+                {cooldown > 0 ? `Wyślij ponownie (${cooldown} s)` : "Wyślij ponownie"}
+              </Button>
+              <button
+                type="button"
+                className="block w-full rounded text-center text-sm font-medium text-primary underline-offset-4 hover:underline"
+                onClick={() => {
+                  setSent(null);
+                  switchMode("login");
+                }}
+              >
+                Wróć do logowania
+              </button>
+            </div>
+          )}
+
+          {!sent && config?.google && mode !== "forgot" && (
             <>
               <Button
                 type="button"
@@ -96,7 +211,8 @@ export default function LoginPage() {
             </>
           )}
 
-          <form onSubmit={submit} className={cn("space-y-4", !config?.google && "mt-5")}>
+          {!sent && (
+          <form onSubmit={submit} className={cn("space-y-4", !(config?.google && mode !== "forgot") && "mt-5")}>
             {mode === "register" && (
               <div className="space-y-1.5">
                 <Label htmlFor="name">Imię</Label>
@@ -124,6 +240,7 @@ export default function LoginPage() {
               />
             </div>
 
+            {mode !== "forgot" && (
             <div className="space-y-1.5">
               <Label htmlFor="password">Hasło</Label>
               <Input
@@ -139,7 +256,18 @@ export default function LoginPage() {
               {mode === "register" && (
                 <p className="text-xs text-muted-foreground">Minimum 8 znaków.</p>
               )}
+              {mode === "login" && config?.mail && (
+                <button
+                  type="button"
+                  className="rounded text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                  onClick={() => switchMode("forgot")}
+                  data-testid="button-forgot"
+                >
+                  Nie pamiętasz hasła?
+                </button>
+              )}
             </div>
+            )}
 
             {error && (
               <p
@@ -151,26 +279,32 @@ export default function LoginPage() {
               </p>
             )}
 
+            {needsVerification && (
+              <Button type="button" variant="outline" className="w-full" disabled={cooldown > 0} onClick={resend}>
+                {cooldown > 0 ? `Wyślij link ponownie (${cooldown} s)` : "Wyślij link ponownie"}
+              </Button>
+            )}
+
             <Button type="submit" className="w-full" disabled={busy} data-testid="button-submit">
               {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {mode === "login" ? "Zaloguj się" : "Załóż konto"}
+              {mode === "login" ? "Zaloguj się" : mode === "register" ? "Załóż konto" : "Wyślij link"}
             </Button>
           </form>
+          )}
 
+          {!sent && (
           <p className="mt-5 text-center text-sm text-muted-foreground">
             {mode === "login" ? "Nie masz jeszcze konta?" : "Masz już konto?"}{" "}
             <button
               type="button"
               className="rounded font-medium text-primary underline-offset-4 hover:underline"
-              onClick={() => {
-                setMode(mode === "login" ? "register" : "login");
-                setError(null);
-              }}
+              onClick={() => switchMode(mode === "login" ? "register" : "login")}
               data-testid="button-switch-mode"
             >
               {mode === "login" ? "Załóż je" : "Zaloguj się"}
             </button>
           </p>
+          )}
         </div>
       </main>
     </div>

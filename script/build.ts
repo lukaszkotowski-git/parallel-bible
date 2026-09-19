@@ -11,6 +11,7 @@ const allowlist = [
   "better-auth",
   "express",
   "nanoid",
+  "nodemailer",
   "zod",
 ];
 
