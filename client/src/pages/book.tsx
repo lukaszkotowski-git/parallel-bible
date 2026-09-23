@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { announceReward } from "@/lib/rewards";
 import { fetchReadChapters, invalidateUserState, qk, setBookRead, type BookDto } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { BOOK_TITLE_VT } from "@/lib/view-transition";
 
 export default function BookPage() {
   const { book: bookId = "" } = useParams<{ book: string }>();
@@ -79,7 +80,9 @@ export default function BookPage() {
           </p>
         ) : (
           <>
-            <h1 className="mt-4 font-display text-xl font-bold leading-tight">{book.namePl}</h1>
+            <h1 className="mt-4 w-fit font-display text-xl font-bold leading-tight" style={{ viewTransitionName: BOOK_TITLE_VT }}>
+              {book.namePl}
+            </h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {book.nameEn} · {book.chapterCount} rozdziałów · przeczytane{" "}
               <span className="tabular-nums text-read-marker">{readSet.size}</span>

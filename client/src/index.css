@@ -397,6 +397,34 @@
   .skip-link:focus { top: 0.75rem; }
 }
 
+/* Przejścia między stronami (View Transitions, włączane w App.tsx). Nagłówek stoi w miejscu,
+   treść lekko wjeżdża, a tytuł księgi (`book-title`) przepływa z kafelka do nagłówka strony. */
+@keyframes vt-fade-out {
+  to { opacity: 0; transform: translateY(-6px); }
+}
+@keyframes vt-fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+}
+::view-transition-old(root) {
+  animation: vt-fade-out 0.18s ease-in both;
+}
+::view-transition-new(root) {
+  animation: vt-fade-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) 0.06s both;
+}
+::view-transition-group(book-title) {
+  animation-duration: 0.42s;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* Tekst o innej długości: skalujemy zrzut proporcjonalnie do wysokości zamiast go rozciągać. */
+::view-transition-old(book-title),
+::view-transition-new(book-title) {
+  height: 100%;
+  width: auto;
+}
+.vt-app-header {
+  view-transition-name: app-header;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

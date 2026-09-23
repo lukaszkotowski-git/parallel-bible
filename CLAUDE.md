@@ -119,6 +119,12 @@ all API calls and TanStack Query keys (`qk`); `invalidateUserState()` is the sin
 invalidates all user-state-dependent queries after a mutation — call it (or add to it) rather than
 invalidating query keys ad hoc.
 
+**Motion**: navigation runs through the View Transitions API (`aroundNav` in `client/src/lib/view-transition.ts`,
+styles `::view-transition-*` in `index.css`). A `view-transition-name` must be unique per page: the book title
+(`book-title`) sits on the book/chapter `h1` and, on the home grid, on only one tile at a time via `nameBookTitle()`.
+The home hero demo (`components/hero-demo.tsx`) shows only when there is no reading position to continue.
+Honor `prefers-reduced-motion` (`useReducedMotion()` / the global CSS rule) in new animations.
+
 **Celebrations**: badges, level-ups and reaching the daily goal open a dialog with confetti
 (`CelebrationHost` in `App.tsx`, queue in `client/src/lib/rewards.ts`). Call `announceReward(res)` with the
 `RewardDto` returned by any action that can award something; it detects level-ups and the daily goal by

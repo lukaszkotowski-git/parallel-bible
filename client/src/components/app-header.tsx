@@ -161,7 +161,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   const { data: state, isLoading } = useUserState();
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur-sm">
+    <header className="vt-app-header sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur-sm">
       <div className="mx-auto flex h-16 max-w-3xl items-center gap-2 px-4 sm:gap-3 sm:px-6">
         <Brand />
         <div className="flex-1">{children}</div>

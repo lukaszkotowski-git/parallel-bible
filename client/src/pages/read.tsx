@@ -48,6 +48,7 @@ import { saveLocalPosition } from "@/lib/last-position";
 import { useTranslations } from "@/lib/translations";
 import { queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
+import { BOOK_TITLE_VT } from "@/lib/view-transition";
 
 export default function ReadPage() {
   const params = useParams<{ book: string; chapter: string }>();
@@ -373,7 +374,7 @@ export default function ReadPage() {
         ) : (
           <>
             <div className="mt-4 border-b border-border pb-5">
-              <h1 className="font-display text-xl font-bold leading-tight">
+              <h1 className="w-fit font-display text-xl font-bold leading-tight" style={{ viewTransitionName: BOOK_TITLE_VT }}>
                 {data.book.namePl} {data.book.chapter}
               </h1>
               <p className="mt-1 text-xs text-muted-foreground">

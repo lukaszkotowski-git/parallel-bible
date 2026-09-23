@@ -21,6 +21,7 @@ import ResetPasswordPage from "@/pages/reset-password";
 import { useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { invalidateUserState } from "@/lib/api";
+import { aroundNav } from "@/lib/view-transition";
 import NotFound from "@/pages/not-found";
 
 /**
@@ -86,7 +87,7 @@ function App() {
         <Toaster />
         <CelebrationHost />
         <AuthLinkNotices />
-        <Router hook={useHashLocation}>
+        <Router hook={useHashLocation} aroundNav={aroundNav}>
           <AppRouter />
         </Router>
       </TooltipProvider>
