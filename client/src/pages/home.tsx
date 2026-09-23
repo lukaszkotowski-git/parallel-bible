@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowRight, BookOpen, Search } from "lucide-react";
+import { AmbientLight } from "@/components/ambient-light";
 import { HeroDemo } from "@/components/hero-demo";
 import { BlurWords } from "@/components/motion-text";
 import { SupportButton } from "@/components/support-dialog";
@@ -201,6 +202,7 @@ export default function Home() {
 
   return (
     <div className="relative z-10 min-h-screen">
+      <AmbientLight />
       <AppHeader />
 
       <main id="main" tabIndex={-1} className="mx-auto max-w-3xl px-4 pb-20 pt-8 sm:px-6">
