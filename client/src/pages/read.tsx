@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import {
@@ -12,7 +12,6 @@ import {
 import { AppHeader, useAuthed } from "@/components/app-header";
 import { ChapterCommentary } from "@/components/chapter-commentary";
 import { SupportNudge } from "@/components/support-nudge";
-import { TranslationSelects } from "@/components/translation-selects";
 import { ReadingSettingsPopover } from "@/components/reading-settings-popover";
 import { VerseRow } from "@/components/verse-row";
 import { Button } from "@/components/ui/button";
@@ -50,6 +49,35 @@ import { queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { BOOK_TITLE_VT } from "@/lib/view-transition";
 
+const HINT_KEY = "pb-reveal-count";
+const HINT_REVEALS = 3;
+
+function revealCount() {
+  try {
+    return Number(localStorage.getItem(HINT_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Podpowiedź „dotknij wersetu" żyje, dopóki czytelnik nie odsłoni tłumaczenia trzy razy (rozwinięcie
+ * wszystkich liczy się jak komplet). Znika dopiero przy kolejnym rozdziale (`retire`) — zniknięcie pod
+ * palcem przesunęłoby cały tekst o wysokość akapitu.
+ */
+function useRevealHint() {
+  const [showHint, setShowHint] = useState(() => revealCount() < HINT_REVEALS);
+  const markRevealed = useCallback((count = 1) => {
+    try {
+      localStorage.setItem(HINT_KEY, String(revealCount() + count));
+    } catch {
+      /* tryb prywatny — podpowiedź wróci po odświeżeniu */
+    }
+  }, []);
+  const retire = useCallback(() => setShowHint(revealCount() < HINT_REVEALS), []);
+  return { showHint, markRevealed, retire };
+}
+
 export default function ReadPage() {
   const params = useParams<{ book: string; chapter: string }>();
   const bookId = params.book ?? "";
@@ -57,18 +85,27 @@ export default function ReadPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { authed } = useAuthed();
+  const { showHint, markRevealed, retire } = useRevealHint();
+  const lastLoginPrompt = useRef(0);
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   const [openVerses, setOpenVerses] = useState<Set<number>>(new Set());
   // Okno „jak Ci się podoba aplikacja?" — pokazuje je serwer w odpowiedzi na zapis rozdziału.
   const [nudge, setNudge] = useState<{ chapters: number } | null>(null);
 
   const { read, alt, readLang, altLang } = useTranslations();
-  const { data, isLoading, isError, error, refetch } = useQuery<ChapterDto>({
+  const { data, isLoading, isPlaceholderData, isError, error, refetch } = useQuery<ChapterDto>({
     queryKey: qk.chapter(bookId, chapter, read, alt),
     queryFn: () => fetchChapter(bookId, chapter, read, alt),
     placeholderData: keepPreviousData, // przy zmianie tłumaczeń stary tekst zostaje do czasu nowego
     retry: 1, // jedna ponowna próba: chwilowy brak sieci nie powinien od razu pokazywać błędu
   });
+
+  // `keepPreviousData` ma tylko podtrzymać tekst przy zmianie pary tłumaczeń. Gdy pokazywany jest INNY
+  // rozdział niż w adresie, nie wolno na nim niczego zapisywać (numery wersetów należą do starego), więc
+  // traktujemy to jak wczytywanie.
+  const wrongChapter = !!data && (data.book.id !== bookId || data.book.chapter !== chapter);
+  const loading = isLoading || !data || wrongChapter;
 
   // Sąsiednie rozdziały ładujemy z wyprzedzeniem, żeby „Następny" był natychmiastowy.
   // Odpowiedzi są niezmienne i cache'owane, więc koszt to jedno lekkie zapytanie.
@@ -138,13 +175,18 @@ export default function ReadPage() {
     return () => clearInterval(t);
   }, []);
 
-  // Nowy rozdział: zwiń odsłonięte tłumaczenia i zapisz ostatnią pozycję czytania.
-  // Bez konta nie ma gdzie jej zapisać — samo czytanie działa tak samo.
+  // Nowy rozdział: zwiń odsłonięte tłumaczenia i zapamiętaj ostatnią pozycję czytania lokalnie.
   useEffect(() => {
     setOpenVerses(new Set());
     secondsRef.current = 0;
     window.scrollTo({ top: 0 });
+    retire();
     if (bookId && chapter) saveLocalPosition({ bookId, chapter });
+  }, [bookId, chapter, retire]);
+
+  // Pozycja na koncie — osobno, żeby dojście sesji po załadowaniu strony nie zwijało wersetów,
+  // nie zerowało czasu czytania ani nie przewijało na górę.
+  useEffect(() => {
     if (authed && bookId && chapter) {
       savePosition(bookId, chapter)
         .then(() => invalidateUserState())
@@ -152,11 +194,19 @@ export default function ReadPage() {
     }
   }, [authed, bookId, chapter]);
 
+  // Czytnik ekranu i klawiatura: po zmianie rozdziału fokus wraca na tytuł, a tytuł karty się zmienia.
+  const loadedTitle = !loading && data ? `${data.book.namePl} ${data.book.chapter}` : null;
+  useEffect(() => {
+    if (!loadedTitle) return;
+    document.title = `${loadedTitle} — Parallel Bible`;
+    titleRef.current?.focus({ preventScroll: true });
+  }, [loadedTitle]);
+
   const readMutation = useMutation({
-    // `seconds` przekazujemy jawnie: mutationFn rusza asynchronicznie, a po „Następny" licznik
-    // czasu zdąży się wyzerować dla nowego rozdziału.
-    mutationFn: async ({ mark, ch, seconds }: { mark: boolean; ch: number; seconds?: number }) =>
-      mark ? markRead(bookId, ch, seconds ?? 0) : unmarkRead(bookId, ch),
+    // `book` i `seconds` przekazujemy jawnie: mutationFn rusza asynchronicznie, a po przejściu dalej
+    // adres i licznik czasu dotyczą już następnego rozdziału (inaczej „Cofnij" trafiłoby w złą księgę).
+    mutationFn: async ({ mark, book, ch, seconds }: { mark: boolean; book: string; ch: number; seconds?: number }) =>
+      mark ? markRead(book, ch, seconds ?? 0) : unmarkRead(book, ch),
     onSuccess: (res) => {
       invalidateUserState();
       if (res) {
@@ -166,22 +216,38 @@ export default function ReadPage() {
     },
   });
 
+  /** Cofnięcie oznaczenia; komunikat dopiero po odpowiedzi serwera, błąd nie jest cichy. */
+  const unmarkChapter = (book: string, ch: number, message = "Cofnięto oznaczenie") =>
+    readMutation.mutate(
+      { mark: false, book, ch },
+      {
+        onSuccess: () => toast({ title: message, duration: 4000 }),
+        onError: () => toast({ title: "Nie udało się cofnąć oznaczenia", variant: "destructive", duration: 4000 }),
+      },
+    );
+
   const allOpen = !!data && data.verses.length > 0 && openVerses.size === data.verses.length;
 
   const toggleAll = () => {
     if (!data) return;
+    if (!allOpen) markRevealed(HINT_REVEALS);
     setOpenVerses(allOpen ? new Set() : new Set(data.verses.map((v) => v.v)));
   };
 
-  const toggleVerse = (v: number) =>
+  const toggleVerse = (v: number) => {
+    if (!openVerses.has(v)) markRevealed();
     setOpenVerses((prev) => {
       const next = new Set(prev);
       next.has(v) ? next.delete(v) : next.add(v);
       return next;
     });
+  };
 
   /** Zaproszenie do logowania zamiast cichego 401 z API. */
   const promptLogin = (what: string) => {
+    // Seria stuknięć w gwiazdki nie zasypuje ekranu tym samym komunikatem.
+    if (Date.now() - lastLoginPrompt.current < 20_000) return;
+    lastLoginPrompt.current = Date.now();
     toast({
       title: "Zaloguj się, aby zapisać",
       description: `${what} zapisujemy na koncie, żeby był dostępny też na telefonie.`,
@@ -281,38 +347,45 @@ export default function ReadPage() {
     invalidateLearn();
   };
 
-  /** Auto-zapis postępu: krótki popup (2 s) z możliwością cofnięcia, zawsze da się zamknąć krzyżykiem. */
-  const saveProgress = async (ch: number, description: string) => {
+  /** Zapis postępu z komunikatem i cofnięciem (6 s, zawsze da się zamknąć krzyżykiem). Zwraca, czy się udał. */
+  const saveProgress = async (book: string, ch: number, description: string) => {
     let counted = true;
     try {
-      const res = await readMutation.mutateAsync({ mark: true, ch, seconds: secondsRef.current });
+      const res = await readMutation.mutateAsync({ mark: true, book, ch, seconds: secondsRef.current });
       if (res && "counted" in res) counted = res.counted;
     } catch {
       toast({ title: "Nie udało się zapisać postępu", variant: "destructive", duration: 4000 });
-      return;
+      return false;
     }
     toast({
       title: "Zapisano postęp",
       // Krótkie „odhaczenie" zapisuje postęp, ale nie liczy się do serii i punktów.
       description: counted ? description : `${description} Zbyt krótko, by liczyło się do serii i punktów.`,
-      duration: 2000,
+      duration: 6000,
       action: (
         <ToastAction
           altText="Cofnij zapis postępu"
-          onClick={() => readMutation.mutate({ mark: false, ch })}
+          onClick={() => unmarkChapter(book, ch)}
           data-testid="button-undo-progress"
         >
           Cofnij
         </ToastAction>
       ),
     });
+    return true;
   };
 
+  /** Jedyny przycisk „dalej", który zapisuje: zaznacza rozdział jako przeczytany i przechodzi do następnego. */
+  const finishChapter = async () => {
+    if (!data || loading) return;
+    const next = data.nav.next;
+    const saved = await saveProgress(data.book.id, data.book.chapter, `${data.book.namePl} ${data.book.chapter} oznaczony jako przeczytany.`);
+    if (saved && next) navigate(`/czytaj/${next.book}/${next.chapter}`);
+  };
+
+  /** Zwykłe „Następny" tylko nawiguje (rozdział już przeczytany albo brak konta). */
   const goNext = () => {
     if (!data?.nav.next) return;
-    if (authed && !isRead) {
-      saveProgress(chapter, `${data.book.namePl} ${chapter} oznaczony jako przeczytany.`);
-    }
     navigate(`/czytaj/${data.nav.next.book}/${data.nav.next.chapter}`);
   };
 
@@ -346,89 +419,83 @@ export default function ReadPage() {
     );
   }
 
+  const canFinish = authed && !isRead;
+  const toggleAllButton = (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={toggleAll}
+      data-testid="button-toggle-all-pl"
+    >
+      {allOpen ? <ChevronsDownUp className="mr-1.5 h-4 w-4" /> : <ChevronsUpDown className="mr-1.5 h-4 w-4" />}
+      {allOpen ? "Zwiń wszystkie tłumaczenia" : "Rozwiń wszystkie tłumaczenia"}
+    </Button>
+  );
+  const SKELETON_ROWS = ["h-14", "h-20", "h-16", "h-24", "h-14", "h-20", "h-16", "h-14"];
+
   return (
-    <div className="relative z-10 min-h-screen pb-28 sm:pb-12">
-      <AppHeader />
+    <div className="relative z-10 min-h-screen pb-[calc(7rem+env(safe-area-inset-bottom))] sm:pb-12">
+      <AppHeader reading />
       {nudge && <SupportNudge chapters={nudge.chapters} onClose={() => setNudge(null)} />}
 
       <main
         id="main"
-        className="mx-auto px-4 pt-6 sm:px-6"
+        className="mx-auto px-4 pt-3 sm:px-6"
         style={{ maxWidth: "var(--reading-width, 48rem)" }}
       >
         <Link
           href={`/ksiega/${bookId}`}
-          className="inline-flex items-center gap-1.5 rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground"
+          aria-label={data && !wrongChapter ? `Rozdziały: ${data.book.namePl}` : undefined}
+          className="inline-flex min-h-11 items-center gap-1.5 rounded-md pr-3 text-sm text-muted-foreground transition-colors hover:text-foreground"
           data-testid="link-back-chapters"
         >
-          <ArrowLeft className="h-4 w-4" /> {data?.book.namePl ?? "Rozdziały"}
+          <ArrowLeft className="h-4 w-4" /> Rozdziały
         </Link>
 
-        {isLoading || !data ? (
-          <div className="mt-6 space-y-4">
-            <Skeleton className="h-8 w-64" />
-            {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-16 w-full rounded-lg" />
+        {loading || !data ? (
+          <div className="mt-3 space-y-4" role="status" aria-label="Wczytywanie rozdziału">
+            <Skeleton className="h-10 w-64" />
+            {SKELETON_ROWS.map((h, i) => (
+              <Skeleton key={i} className={cn("w-full rounded-lg", h)} />
             ))}
           </div>
         ) : (
           <>
-            <div className="mt-4 border-b border-border pb-5">
-              <h1 className="w-fit font-display text-xl font-bold leading-tight" style={{ viewTransitionName: BOOK_TITLE_VT }}>
+            <div className="mt-1 border-b border-border pb-5">
+              <h1
+                ref={titleRef}
+                tabIndex={-1}
+                className="w-fit font-display text-3xl font-bold leading-tight focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 sm:text-4xl"
+                style={{ viewTransitionName: BOOK_TITLE_VT }}
+              >
                 {data.book.namePl} {data.book.chapter}
               </h1>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {data.translations.read.name} ({data.translations.read.shortName}) ·{" "}
-                {data.translations.alt.name} ({data.translations.alt.shortName}) · rozdział{" "}
-                {data.book.chapter} z {data.book.totalChapters}
-              </p>
+              {showHint && (
+                <p className="mt-2 text-balance text-sm text-muted-foreground" data-testid="text-reveal-hint">
+                  Dotknij werset, by zobaczyć: {data.translations.alt.name}.
+                </p>
+              )}
 
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={toggleAll}
-                  data-testid="button-toggle-all-pl"
-                >
-                  {allOpen ? (
-                    <ChevronsDownUp className="mr-1.5 h-4 w-4" />
-                  ) : (
-                    <ChevronsUpDown className="mr-1.5 h-4 w-4" />
-                  )}
-                  {allOpen ? "Zwiń wszystkie tłumaczenia" : "Rozwiń wszystkie tłumaczenia"}
-                </Button>
+              {/* Na telefonie nad tekstem nie ma kontrolek: „rozwiń wszystkie" i widok są w dolnym pasku. */}
+              <div className="mt-4 flex flex-wrap items-center gap-2 max-sm:hidden">
+                {toggleAllButton}
 
-                <TranslationSelects />
-
-                <ReadingSettingsPopover />
-
-                <Button
-                  variant={isRead ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => {
-                    if (!authed) {
-                      promptLogin("Postęp czytania");
-                    } else if (isRead) {
-                      readMutation.mutate({ mark: false, ch: chapter });
-                      toast({ title: "Cofnięto oznaczenie", duration: 4000 });
-                    } else {
-                      saveProgress(chapter, `${data.book.namePl} ${chapter} oznaczony jako przeczytany.`);
-                    }
-                  }}
-                  className={cn(isRead && "text-read-marker")}
-                  data-testid="button-mark-read"
-                >
-                  <Check className="mr-1.5 h-4 w-4" />
-                  {isRead ? "Przeczytany" : "Oznacz jako przeczytany"}
-                </Button>
+                <ReadingSettingsPopover
+                  pair={`${data.translations.read.shortName} → ${data.translations.alt.shortName}`}
+                  pairLong={`${data.translations.read.name} → ${data.translations.alt.name}`}
+                />
               </div>
             </div>
 
-            <div className="py-4">
-              {data.verses.map((verse) => (
+            <div
+              className={cn("py-4 transition-opacity duration-200", isPlaceholderData && "opacity-60")}
+              aria-busy={isPlaceholderData}
+            >
+              {data.verses.map((verse, i) => (
                 <VerseRow
-                  key={verse.v}
+                  key={`${data.book.id}-${data.book.chapter}-${verse.v}`}
                   verse={verse}
+                  hint={showHint && i === 0}
                   readLang={readLang}
                   altLang={altLang}
                   open={openVerses.has(verse.v)}
@@ -442,12 +509,13 @@ export default function ReadPage() {
                   onToggleCard={() => toggleCard(verse.v)}
                   onHighlight={(c) => setHighlight(verse.v, c)}
                   onSaveNote={(t) => setNote(verse.v, t)}
+                  locked={!authed}
                 />
               ))}
 
               {data.extraAlt.length > 0 && (
                 <div className="mt-6 rounded-lg border border-dashed border-border bg-muted/40 p-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <p className="text-xs font-medium text-muted-foreground">
                     Dodatkowe wersety: {data.translations.alt.name}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -462,12 +530,50 @@ export default function ReadPage() {
                 </div>
               )}
 
-              {data.commentary && <ChapterCommentary commentary={data.commentary} readLang={readLang} altLang={altLang} />}
+              {data.commentary && (
+                <ChapterCommentary
+                  key={`${data.book.id}-${data.book.chapter}`}
+                  commentary={data.commentary}
+                  readLang={readLang}
+                  altLang={altLang}
+                />
+              )}
+
+              {/* Stan zakończenia — sam zapis robi przycisk w dolnej nawigacji („Zakończ i dalej"). */}
+              {authed && isRead && (
+                <section
+                  aria-label="Koniec rozdziału"
+                  className="mt-8 flex flex-col items-center gap-2 border-t border-border pt-6 text-center"
+                >
+                  <p className="flex items-center gap-2 font-display text-lg text-read-marker">
+                    <Check className="h-5 w-5 animate-celebrate-pop" aria-hidden="true" /> Rozdział przeczytany
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="max-sm:min-h-11"
+                    onClick={() => unmarkChapter(data.book.id, data.book.chapter)}
+                    data-testid="button-unmark-read"
+                  >
+                    Cofnij oznaczenie
+                  </Button>
+                </section>
+              )}
             </div>
 
             {/* Jedna nawigacja: przyklejona do dołu na mobile, w treści na desktopie */}
-            <nav className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-between gap-3 border-t border-border bg-background/95 px-4 py-3 backdrop-blur-sm sm:static sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-5 sm:backdrop-blur-none">
-              <ChapterNavButtons data={data} onNext={goNext} />
+            <nav
+              aria-label="Nawigacja po rozdziałach"
+              className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-between gap-1 border-t border-border bg-background/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:static sm:gap-3 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-5 sm:backdrop-blur-none"
+            >
+              <ChapterNavButtons
+                data={data}
+                canFinish={canFinish}
+                onNext={goNext}
+                onFinish={finishChapter}
+                allOpen={allOpen}
+                onToggleAll={toggleAll}
+              />
             </nav>
           </>
         )}
@@ -476,34 +582,91 @@ export default function ReadPage() {
   );
 }
 
-function ChapterNavButtons({ data, onNext }: { data: ChapterDto; onNext: () => void }) {
-  const side = "flex-1 sm:flex-none";
+function ChapterNavButtons({
+  data,
+  canFinish,
+  onNext,
+  onFinish,
+  allOpen,
+  onToggleAll,
+}: {
+  data: ChapterDto;
+  /** Zalogowany i rozdział jeszcze nieprzeczytany: główny przycisk zapisuje postęp. */
+  canFinish: boolean;
+  onNext: () => void;
+  onFinish: () => void;
+  allOpen: boolean;
+  onToggleAll: () => void;
+}) {
+  const hasNext = !!data.nav.next;
+  // Telefon: „Poprzedni" to sama strzałka 44 px, a główny przycisk dostaje całą resztę (mieści się przy 320 px).
+  const prevSide = "w-11 flex-none px-0 sm:w-auto sm:px-4";
+  const nextSide = "min-w-0 flex-1 max-sm:min-h-11 max-[380px]:px-2 sm:flex-none";
   return (
     <>
       {data.nav.prev ? (
-        <Button asChild variant="outline" className={side} data-testid="link-prev-chapter">
-          <Link href={`/czytaj/${data.nav.prev.book}/${data.nav.prev.chapter}`}>
-            <ChevronLeft className="mr-1 h-4 w-4" /> Poprzedni
+        <Button asChild variant="ghost" className={cn(prevSide, "max-sm:h-11")} data-testid="link-prev-chapter">
+          <Link href={`/czytaj/${data.nav.prev.book}/${data.nav.prev.chapter}`} aria-label="Poprzedni rozdział">
+            <ChevronLeft className="h-4 w-4 sm:mr-1" />
+            <span className="max-sm:sr-only">Poprzedni</span>
           </Link>
         </Button>
       ) : (
-        <span className={side} />
+        <span className={cn(prevSide, "max-sm:w-11")} />
       )}
 
-      <Link
-        href={`/ksiega/${data.book.id}`}
-        className="shrink-0 rounded-md px-2 text-xs tabular-nums text-muted-foreground transition-colors hover:text-foreground"
-        data-testid="link-chapter-index"
-      >
-        {data.book.chapter} / {data.book.totalChapters}
-      </Link>
+      <div className="flex shrink-0 items-center">
+        <Link
+          href={`/ksiega/${data.book.id}`}
+          aria-label={`Rozdział ${data.book.chapter} z ${data.book.totalChapters} — wybierz rozdział`}
+          className="inline-flex min-h-11 items-center rounded-md px-2 text-xs tabular-nums text-muted-foreground underline decoration-muted-foreground/40 underline-offset-4 transition-colors hover:text-foreground hover:decoration-foreground sm:min-h-8 sm:px-3"
+          data-testid="link-chapter-index"
+        >
+          {data.book.chapter} / {data.book.totalChapters}
+        </Link>
+        {/* Na telefonie to wejście do rozwijania tłumaczeń i widoku: nagłówek się chowa, nad tekstem nic nie ma. */}
+        <div className="flex items-center sm:hidden">
+          <Button
+            variant="ghost"
+            className="h-11 min-w-11 flex-col gap-0.5 px-1 text-[0.625rem] font-medium leading-none text-muted-foreground"
+            onClick={onToggleAll}
+            aria-label={allOpen ? "Zwiń wszystkie tłumaczenia" : "Rozwiń wszystkie tłumaczenia"}
+            data-testid="button-toggle-all-pl-compact"
+          >
+            {allOpen ? <ChevronsDownUp className="h-4 w-4" /> : <ChevronsUpDown className="h-4 w-4" />}
+            {allOpen ? "Zwiń" : "Rozwiń"}
+          </Button>
+          <ReadingSettingsPopover compact />
+        </div>
+      </div>
 
-      {data.nav.next ? (
-        <Button onClick={onNext} className={side} data-testid="button-next-chapter">
-          Następny <ChevronRight className="ml-1 h-4 w-4" />
+      {canFinish || hasNext ? (
+        <Button
+          onClick={canFinish ? onFinish : onNext}
+          className={nextSide}
+          aria-label={canFinish ? (hasNext ? "Zakończ rozdział i przejdź dalej" : "Zakończ rozdział") : "Następny rozdział"}
+          data-testid={canFinish ? "button-mark-read" : "button-next-chapter"}
+        >
+          {canFinish ? (
+            <>
+              <Check className="mr-1.5 h-4 w-4 max-[380px]:mr-1" />
+              {hasNext ? (
+                <>
+                  <span className="max-[380px]:hidden">Zakończ i dalej</span>
+                  <span className="hidden max-[380px]:inline">Dalej</span>
+                </>
+              ) : (
+                "Zakończ rozdział"
+              )}
+            </>
+          ) : (
+            <>
+              Następny <ChevronRight className="ml-1 h-4 w-4 max-[380px]:hidden" />
+            </>
+          )}
         </Button>
       ) : (
-        <span className={side} />
+        <span className={nextSide} />
       )}
     </>
   );

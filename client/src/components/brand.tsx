@@ -32,7 +32,7 @@ export function Brand({ compact = false }: { compact?: boolean }) {
       data-testid="link-home"
     >
       <BrandMark className="h-6 w-6 text-foreground" />
-      <span className="font-display text-lg font-bold leading-none tracking-tight">
+      <span className="whitespace-nowrap font-display text-lg font-bold leading-none tracking-tight max-[360px]:sr-only">
         Parallel<span className="text-primary"> Bible</span>
       </span>
       {!compact && (

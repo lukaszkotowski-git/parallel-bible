@@ -136,8 +136,8 @@ export function SupportButton({ variant = "pill", className }: { variant?: "icon
         <Tooltip>
           <TooltipTrigger asChild>
             <DialogTrigger asChild>
-              <Button variant="ghost" size="icon" className={cn("h-9 w-9", className)} aria-label="Wesprzyj projekt" data-testid="button-support">
-                <Heart className="h-4 w-4 fill-primary/20 text-primary" />
+              <Button variant="ghost" size="icon" className={cn("group h-9 w-9", className)} aria-label="Wesprzyj projekt" data-testid="button-support">
+                <Heart className="h-4 w-4 text-muted-foreground transition-colors group-hover:fill-primary/20 group-hover:text-primary" />
               </Button>
             </DialogTrigger>
           </TooltipTrigger>

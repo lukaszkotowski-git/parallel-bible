@@ -155,13 +155,39 @@ function AccountMenu() {
   );
 }
 
-export function AppHeader({ children }: { children?: React.ReactNode }) {
+/** Na telefonie chowa nagłówek przy przewijaniu w dół, a pokazuje go przy przewijaniu w górę. */
+function useHideOnScroll(enabled: boolean) {
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    let last = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (Math.abs(y - last) < 8) return;
+      setHidden(y > last && y > 120);
+      last = y;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [enabled]);
+  return [enabled && hidden, () => setHidden(false)] as const;
+}
+
+/**
+ * `reading` = strona czytania: tekst ma pierwszeństwo, więc pierścień postępu i ranking znikają,
+ * a na telefonie cały nagłówek chowa się podczas przewijania w dół.
+ */
+export function AppHeader({ children, reading = false }: { children?: React.ReactNode; reading?: boolean }) {
   const { theme, toggle } = useTheme();
   const { authed, pending } = useAuthed();
   const { data: state, isLoading } = useUserState();
+  const [hidden, reveal] = useHideOnScroll(reading);
 
   return (
-    <header className="vt-app-header sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur-sm">
+    <header
+      onFocusCapture={reveal}
+      className={`vt-app-header sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur-sm transition-transform duration-200 ${hidden ? "max-sm:-translate-y-full" : ""}`}
+    >
       <div className="mx-auto flex h-16 max-w-3xl items-center gap-2 px-4 sm:gap-3 sm:px-6">
         <Brand />
         <div className="flex-1">{children}</div>
@@ -171,7 +197,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9"
+              className="h-9 w-9 shrink-0 max-sm:h-11 max-sm:w-11"
               aria-label={theme === "dark" ? "Włącz tryb jasny" : "Włącz tryb ciemny"}
               onClick={toggle}
               data-testid="button-theme-toggle"
@@ -182,31 +208,33 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           <TooltipContent>Tryb {theme === "dark" ? "jasny" : "ciemny"}</TooltipContent>
         </Tooltip>
 
-        <SupportButton variant="icon" />
+        <SupportButton variant="icon" className="shrink-0 max-sm:h-11 max-sm:w-11" />
 
         {/* Ranking widoczny dla każdego; bez konta strona pokaże zaproszenie do logowania. */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button asChild variant="ghost" size="icon" className="h-9 w-9">
-              <Link href="/ranking" aria-label="Ranking czytelników" data-testid="link-header-leaderboard">
-                <Trophy className="h-4 w-4" />
-              </Link>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Ranking</TooltipContent>
-        </Tooltip>
+        {!reading && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button asChild variant="ghost" size="icon" className="h-9 w-9">
+                <Link href="/ranking" aria-label="Ranking czytelników" data-testid="link-header-leaderboard">
+                  <Trophy className="h-4 w-4" />
+                </Link>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Ranking</TooltipContent>
+          </Tooltip>
+        )}
 
         {pending ? (
           <Skeleton className="h-9 w-9 rounded-full" />
         ) : !authed ? (
-          <Button asChild size="sm" data-testid="button-login">
+          <Button asChild size="sm" variant={reading ? "outline" : "default"} className="shrink-0" data-testid="button-login">
             <Link href="/login">
               <LogIn className="mr-1.5 h-4 w-4" /> Zaloguj
             </Link>
           </Button>
         ) : (
           <>
-            {isLoading ? (
+            {reading ? null : isLoading ? (
               <Skeleton className="h-11 w-11 rounded-full" />
             ) : (
               <Tooltip>

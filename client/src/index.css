@@ -50,7 +50,7 @@
   
   /* --- tokeny domenowe (Parallel Bible) --- */
   --verse-pl: 32 12% 34%;          /* przekład polski — wyciszony, ale AA na tle karty */
-  --verse-number: 32 22% 58%;
+  --verse-number: 32 20% 36%;      /* AA także na tle wyróżnionego wersetu — to jedyna widoczna kotwica wersetu */
   --read-marker: 148 30% 32%;      /* rozdział przeczytany */
   --paper-edge: 36 24% 82%;
   --radius: 0.625rem;
@@ -200,7 +200,7 @@
   );
 
   --verse-pl: 38 14% 72%;
-  --verse-number: 34 16% 50%;
+  --verse-number: 34 16% 58%;
   --read-marker: 148 34% 52%;
   --paper-edge: 30 8% 22%;
 }
@@ -233,6 +233,11 @@
 
   :focus-visible {
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Zaznaczanie tekstu Pisma (kopiowanie wersetu) w barwie akcentu, nie systemowego błękitu. */
+  ::selection {
+    background: hsl(var(--primary) / 0.22);
   }
 }
 
@@ -490,4 +495,14 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Podpowiedź „ten werset da się odsłonić": pierwszy werset raz delikatnie rozświetla się bursztynem.
+   Przy prefers-reduced-motion globalna reguła skraca to do jednej klatki. */
+@keyframes reveal-nudge-row {
+  0%, 100% { background-color: transparent; }
+  35% { background-color: hsl(var(--primary) / 0.14); }
+}
+.reveal-nudge {
+  animation: reveal-nudge-row 1.8s ease-out 0.7s 1 both;
 }
