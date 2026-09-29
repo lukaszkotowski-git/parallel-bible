@@ -109,10 +109,6 @@ export default {
         mono: ["var(--font-mono)"],
       },
       keyframes: {
-        "tile-in": {
-          from: { opacity: "0", transform: "translateY(10px) scale(0.97)" },
-          to: { opacity: "1", transform: "translateY(0) scale(1)" },
-        },
         "glow-drift": {
           "0%": { transform: "translate(0, 0) scale(1)" },
           "50%": { transform: "translate(-24px, 18px) scale(1.12)" },
@@ -127,10 +123,6 @@ export default {
           "60%": { opacity: "1", transform: "scale(1.12)" },
           "100%": { opacity: "1", transform: "scale(1)" },
         },
-        "confetti-fall": {
-          from: { opacity: "1", transform: "translateY(-16px) rotate(0deg)" },
-          to: { opacity: "0", transform: "translateY(240px) rotate(540deg)" },
-        },
         "accordion-down": {
           from: { height: "0" },
           to: { height: "var(--radix-accordion-content-height)" },
@@ -141,11 +133,9 @@ export default {
         },
       },
       animation: {
-        "tile-in": "tile-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both",
         "glow-drift": "glow-drift 14s ease-in-out infinite alternate",
         "verse-reveal": "verse-reveal 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
         "celebrate-pop": "celebrate-pop 0.5s cubic-bezier(0.16, 1, 0.3, 1) both",
-        "confetti-fall": "confetti-fall 1.8s ease-in both",
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
       },

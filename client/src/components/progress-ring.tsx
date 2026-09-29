@@ -1,3 +1,6 @@
+import { useRef } from "react";
+import { useReducedMotion } from "framer-motion";
+import { gsap, useGSAP } from "@/lib/gsap";
 import { cn } from "@/lib/utils";
 
 interface ProgressRingProps {
@@ -7,6 +10,12 @@ interface ProgressRingProps {
   className?: string;
   label?: string;
 }
+
+const formatPercent = (v: number) => (v > 0 && v < 10 ? v.toFixed(1) : String(Math.round(v)));
+
+// Ostatnia pokazana wartość: pierścień w nagłówku montuje się na każdej stronie, więc animujemy
+// tylko od wartości, którą użytkownik już widział (pierwszy raz od zera, potem tylko zmiany).
+let lastPercent = 0;
 
 /** Kołowy wskaźnik postępu czytania. Procent w środku, pełny opis w tooltipie rodzica. */
 export function ProgressRing({
@@ -19,7 +28,44 @@ export function ProgressRing({
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const clamped = Math.max(0, Math.min(100, percent));
-  const offset = circumference - (clamped / 100) * circumference;
+  const arcRef = useRef<SVGCircleElement>(null);
+  const numRef = useRef<HTMLSpanElement>(null);
+  const reduce = useReducedMotion();
+
+  // Łuk i liczba płyną razem z jednego tweenu (bez CSS transition, który rozjeżdżałby się z liczbą).
+  useGSAP(
+    () => {
+      const arc = arcRef.current;
+      const num = numRef.current;
+      if (!arc || !num) return;
+      const paint = (v: number) => {
+        arc.style.strokeDashoffset = String(circumference - (v / 100) * circumference);
+        num.textContent = formatPercent(v);
+      };
+      const from = reduce || document.hidden ? clamped : lastPercent;
+      paint(from);
+      if (from === clamped) {
+        lastPercent = clamped;
+        return;
+      }
+      const state = { v: from };
+      const tween = gsap.to(state, {
+        v: clamped,
+        duration: 0.9,
+        ease: "power2.out",
+        onUpdate: () => paint(state.v),
+        onComplete: () => {
+          lastPercent = clamped;
+        },
+      });
+      return () => {
+        tween.kill();
+        paint(clamped);
+        lastPercent = clamped;
+      };
+    },
+    { dependencies: [clamped, circumference, reduce] },
+  );
 
   return (
     <div
@@ -39,6 +85,7 @@ export function ProgressRing({
           className="stroke-border"
         />
         <circle
+          ref={arcRef}
           cx={size / 2}
           cy={size / 2}
           r={radius}
@@ -46,8 +93,7 @@ export function ProgressRing({
           strokeWidth={strokeWidth}
           strokeLinecap="round"
           strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          className="stroke-primary transition-[stroke-dashoffset] duration-700 ease-out"
+          className="stroke-primary"
         />
       </svg>
       <span
@@ -55,7 +101,7 @@ export function ProgressRing({
         style={{ fontSize: Math.max(9, size * 0.26) }}
         data-testid="text-progress-percent"
       >
-        {clamped > 0 && clamped < 10 ? clamped.toFixed(1) : Math.round(clamped)}
+        <span ref={numRef} />
         <span className="text-[0.65em] opacity-70">%</span>
       </span>
     </div>

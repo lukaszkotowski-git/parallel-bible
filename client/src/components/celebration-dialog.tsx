@@ -1,28 +1,56 @@
+import { useRef } from "react";
+import { useReducedMotion } from "framer-motion";
 import { ChevronsUp, Target, Trophy } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { badgeIcon } from "@/lib/badge-icons";
+import { gsap, useGSAP } from "@/lib/gsap";
 import { dismissCelebration, useCelebration } from "@/lib/rewards";
 
-// Konfetti bez losowości (stały układ = stabilny render); wyłączane przez `motion-safe:`,
-// więc przy „ogranicz ruch" zostaje spokojne okno z animowaną ikoną w wersji statycznej.
-const CONFETTI = Array.from({ length: 22 }, (_, i) => ({
-  left: `${(i * 37) % 100}%`,
-  delay: `${((i * 53) % 90) / 100}s`,
+// Konfetti w kolorach palety (bez turkusu i różu spoza systemu). Kształt/rozmiar/kolor są stałe,
+// a tor ruchu losuje GSAP przy starcie animacji. Przy „ogranicz ruch" konfetti się nie renderuje.
+const PALETTE = ["--primary", "--chart-4", "--read-marker", "--chart-3", "--chart-5"];
+const CONFETTI = Array.from({ length: 30 }, (_, i) => ({
   size: 6 + ((i * 7) % 6),
-  color: ["bg-primary", "bg-amber-400", "bg-emerald-500", "bg-sky-500", "bg-rose-400"][i % 5],
+  color: `hsl(var(${PALETTE[i % PALETTE.length]}))`,
   round: i % 3 === 0,
 }));
 
+/** Wybuch spod ikony: szybki wznios (zwalnia), potem opadanie z przyspieszeniem, dryf i obrót. */
 function Confetti() {
+  const ref = useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion();
+  useGSAP(
+    () => {
+      if (reduce || !ref.current) return;
+      const pieces = gsap.utils.toArray<HTMLElement>("[data-piece]", ref.current);
+      for (const el of pieces) {
+        const drift = gsap.utils.random(-150, 150);
+        const rise = gsap.utils.random(-130, -50);
+        const fall = gsap.utils.random(230, 330);
+        gsap
+          .timeline({ delay: gsap.utils.random(0, 0.25) })
+          .set(el, { opacity: 1 })
+          .to(el, { x: drift, y: rise, duration: 0.5, ease: "power2.out" })
+          .to(el, { x: drift * 1.25 + gsap.utils.random(-30, 30), y: rise + fall, duration: 1.5, ease: "power1.in" })
+          .to(el, { rotation: gsap.utils.random(-540, 540), duration: 2, ease: "none" }, 0)
+          .to(el, { scaleX: 0.25, duration: 0.22, ease: "sine.inOut", yoyo: true, repeat: 7 }, 0.2)
+          .to(el, { opacity: 0, duration: 0.5, ease: "power1.in" }, 1.5);
+      }
+    },
+    { scope: ref, dependencies: [reduce] },
+  );
+  if (reduce) return null;
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 h-60 overflow-hidden" aria-hidden="true">
+    <div ref={ref} className="pointer-events-none absolute inset-x-0 top-0 h-72 overflow-hidden" aria-hidden="true">
       {CONFETTI.map((c, i) => (
         <span
+          // biome-ignore lint/suspicious/noArrayIndexKey: stała lista dekoracji
           key={i}
-          className={`absolute top-0 block motion-safe:animate-confetti-fall motion-reduce:hidden ${c.color} ${c.round ? "rounded-full" : "rounded-[2px]"}`}
-          style={{ left: c.left, width: c.size, height: c.size, animationDelay: c.delay }}
+          data-piece
+          className={`absolute left-1/2 top-24 block opacity-0 ${c.round ? "rounded-full" : "rounded-[2px]"}`}
+          style={{ width: c.size, height: c.size, backgroundColor: c.color }}
         />
       ))}
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
@@ -9,6 +9,7 @@ import { BlurWords } from "@/components/motion-text";
 import { SupportButton } from "@/components/support-dialog";
 import { TodayCards } from "@/components/today-card";
 import { readLocalPosition } from "@/lib/last-position";
+import { gsap, useGSAP } from "@/lib/gsap";
 import { Button } from "@/components/ui/button";
 import { AppHeader, useAuthed, useUserState } from "@/components/app-header";
 import { Input } from "@/components/ui/input";
@@ -87,11 +88,8 @@ function BookTile({
     <Link
       href={`/ksiega/${book.id}`}
       onClick={() => nameBookTitle(book.id)}
-      className={cn(
-        "group relative flex flex-col justify-between gap-2 overflow-hidden rounded-lg border border-card-border bg-card p-3 text-left transition-colors hover-elevate",
-        introDelay !== null && "animate-tile-in",
-      )}
-      style={introDelay !== null ? { animationDelay: `${introDelay}s` } : undefined}
+      className="group relative flex flex-col justify-between gap-2 overflow-hidden rounded-lg border border-card-border bg-card p-3 text-left transition-colors hover-elevate"
+      data-book-tile
       data-testid={`link-book-${book.id}`}
     >
       <span className="min-w-0">
@@ -165,6 +163,7 @@ export default function Home() {
   const continueTarget = useContinueTarget();
   const reduceMotion = useReducedMotion();
   const [intro] = useState(() => !introPlayed && !reduceMotion);
+  const mainRef = useRef<HTMLElement>(null);
   const { data: books, isLoading, isError, refetch } = useQuery<BookDto[]>({
     queryKey: qk.books,
     retry: 1,
@@ -184,6 +183,42 @@ export default function Home() {
   useEffect(() => {
     if (books) introPlayed = true;
   }, [books]);
+
+  // Pierwsze wejście: kafelki w oknie wjeżdżają kaskadą, pozostałe partiami, gdy do nich dojedziesz
+  // (IntersectionObserver zamiast pozycji liczonych z góry — układ zmienia się przy filtrowaniu).
+  useGSAP(
+    () => {
+      const root = mainRef.current;
+      if (!root || !intro || !books) return;
+      const tiles = gsap.utils.toArray<HTMLElement>("[data-book-tile]", root);
+      if (tiles.length === 0) return;
+      const inView = tiles.filter((t) => t.getBoundingClientRect().top < window.innerHeight);
+      const rest = tiles.filter((t) => !inView.includes(t));
+      const show = { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: "power3.out", clearProps: "opacity,transform" };
+      gsap.set(tiles, { opacity: 0, y: 14, scale: 0.97 });
+      gsap.to(inView, { ...show, stagger: { amount: Math.min(inView.length * 0.02, 0.7) } });
+      const io = new IntersectionObserver(
+        (entries) => {
+          const entering = entries.filter((e) => e.isIntersecting).map((e) => e.target as HTMLElement);
+          if (entering.length === 0) return;
+          for (const el of entering) io.unobserve(el);
+          gsap.to(entering, { ...show, stagger: 0.03 });
+        },
+        { rootMargin: "0px 0px -6% 0px" },
+      );
+      for (const el of rest) io.observe(el);
+      const failsafe = setTimeout(() => {
+        io.disconnect();
+        gsap.set(rest, { clearProps: "opacity,transform" });
+      }, 8000);
+      return () => {
+        clearTimeout(failsafe);
+        io.disconnect();
+        gsap.set(tiles, { clearProps: "opacity,transform" });
+      };
+    },
+    { dependencies: [books, intro] },
+  );
   // Po powrocie z księgi jej kafelek dostaje nazwę przejścia, zanim przeglądarka zrobi zrzut.
   useLayoutEffect(() => {
     if (books) nameBookTitle(null);
@@ -205,7 +240,7 @@ export default function Home() {
       <AmbientLight />
       <AppHeader />
 
-      <main id="main" tabIndex={-1} className="mx-auto max-w-3xl px-4 pb-20 pt-8 sm:px-6">
+      <main ref={mainRef} id="main" tabIndex={-1} className="mx-auto max-w-3xl px-4 pb-20 pt-8 sm:px-6">
         <h1 className="font-display text-xl font-bold leading-tight sm:text-xl">
           {intro ? <BlurWords text="Pismo w dwóch językach" stagger={0.07} /> : "Pismo w dwóch językach"}
         </h1>

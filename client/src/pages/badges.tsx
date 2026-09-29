@@ -1,3 +1,4 @@
+import { CountUp } from "@/components/count-up";
 import { useQuery } from "@tanstack/react-query";
 import { Flame, Lock } from "lucide-react";
 import { AppHeader } from "@/components/app-header";
@@ -52,7 +53,7 @@ function Overview() {
         <h2 id="streak-h" className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
           <Flame className="h-3.5 w-3.5" aria-hidden="true" /> Seria
         </h2>
-        <p className="mt-1 font-display text-4xl font-bold tabular-nums leading-none">{streak.current}</p>
+        <p className="mt-1 font-display text-4xl font-bold tabular-nums leading-none"><CountUp value={streak.current} /></p>
         <p className="mt-1 text-sm text-muted-foreground">
           {plural(streak.current, "dzień", "dni", "dni")} z rzędu · rekord {streak.longest}
         </p>

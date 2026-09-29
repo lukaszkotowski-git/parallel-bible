@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useReducedMotion } from "framer-motion";
 import { Link, useLocation, useParams } from "wouter";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import {
@@ -18,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
+import { gsap, useGSAP } from "@/lib/gsap";
 import { announceReward } from "@/lib/rewards";
 import {
   addFavorite,
@@ -90,6 +92,9 @@ export default function ReadPage() {
   const titleRef = useRef<HTMLHeadingElement>(null);
 
   const [openVerses, setOpenVerses] = useState<Set<number>>(new Set());
+  // „Rozwiń/zwiń wszystkie": fala animacji od werseta najbliższego środka ekranu.
+  const [cascadeAnchor, setCascadeAnchor] = useState<number | null>(null);
+  const cascadeTimer = useRef<ReturnType<typeof setTimeout>>();
   // Okno „jak Ci się podoba aplikacja?" — pokazuje je serwer w odpowiedzi na zapis rozdziału.
   const [nudge, setNudge] = useState<{ chapters: number } | null>(null);
 
@@ -202,6 +207,73 @@ export default function ReadPage() {
     titleRef.current?.focus({ preventScroll: true });
   }, [loadedTitle]);
 
+  const reduceMotion = useReducedMotion();
+  const versesRef = useRef<HTMLDivElement>(null);
+  const progressRef = useRef<HTMLDivElement>(null);
+
+  // Otwarcie rozdziału: wersety w oknie wchodzą kolejno (fade + lekki przesuw), pozostałe dopiero gdy
+  // się do nich dojedzie. Wyzwalaczem jest IntersectionObserver, nie pozycje policzone z góry — te
+  // rozjeżdżają się, gdy odsłonięte tłumaczenia zmieniają wysokość wersetów powyżej.
+  // Tytułu `h1` nie animujemy (ma view-transition-name), a przy reduced motion nic się nie chowa.
+  useGSAP(
+    () => {
+      const root = versesRef.current;
+      if (!root || !loadedTitle || reduceMotion) return;
+      const rows = gsap.utils.toArray<HTMLElement>("[data-verse-row]", root);
+      const inView = rows.filter((r) => r.getBoundingClientRect().top < window.innerHeight);
+      const rest = rows.filter((r) => !inView.includes(r));
+      const show = { opacity: 1, y: 0, duration: 0.6, ease: "power3.out", clearProps: "opacity,transform" };
+      gsap.set(rows, { opacity: 0, y: 14 });
+      gsap.to(inView, { ...show, stagger: { each: 0.05, amount: 0.6 }, delay: 0.05 });
+      const io = new IntersectionObserver(
+        (entries) => {
+          const entering = entries.filter((e) => e.isIntersecting).map((e) => e.target as HTMLElement);
+          if (!entering.length) return;
+          for (const el of entering) io.unobserve(el);
+          gsap.to(entering, { ...show, stagger: 0.05 });
+        },
+        { rootMargin: "0px 0px -6% 0px" },
+      );
+      for (const el of rest) io.observe(el);
+      // Bezpiecznik: gdyby obserwator nie zadziałał, po kilku sekundach nic nie zostaje ukryte.
+      const failsafe = setTimeout(() => {
+        io.disconnect();
+        gsap.set(rest, { clearProps: "opacity,transform" });
+      }, 8000);
+      return () => {
+        clearTimeout(failsafe);
+        io.disconnect();
+        gsap.set(rows, { clearProps: "opacity,transform" });
+      };
+    },
+    { dependencies: [loadedTitle, reduceMotion] },
+  );
+
+  // Postęp w rozdziale: cienka bursztynowa linia u góry okna, liczona na żywo z położenia listy wersetów
+  // (więc poprawna także po rozwinięciu tłumaczeń). Przy reduced motion bez wygładzania.
+  useGSAP(
+    () => {
+      const bar = progressRef.current;
+      const root = versesRef.current;
+      if (!bar || !root || !loadedTitle) return;
+      const setX = gsap.quickTo(bar, "scaleX", { duration: reduceMotion ? 0 : 0.25, ease: "power2.out" });
+      const update = () => {
+        const r = root.getBoundingClientRect();
+        const done = window.innerHeight * 0.6 - r.top;
+        setX(Math.min(1, Math.max(0, r.height > 0 ? done / r.height : 0)));
+      };
+      update();
+      window.addEventListener("scroll", update, { passive: true });
+      window.addEventListener("resize", update);
+      return () => {
+        window.removeEventListener("scroll", update);
+        window.removeEventListener("resize", update);
+        gsap.set(bar, { scaleX: 0 });
+      };
+    },
+    { dependencies: [loadedTitle, reduceMotion] },
+  );
+
   const readMutation = useMutation({
     // `book` i `seconds` przekazujemy jawnie: mutationFn rusza asynchronicznie, a po przejściu dalej
     // adres i licznik czasu dotyczą już następnego rozdziału (inaczej „Cofnij" trafiłoby w złą księgę).
@@ -231,11 +303,27 @@ export default function ReadPage() {
   const toggleAll = () => {
     if (!data) return;
     if (!allOpen) markRevealed(HINT_REVEALS);
+    // Anchor = werset najbliżej środka okna: od niego odsłonięcie rozchodzi się w górę i w dół.
+    let anchor = data.verses[0]?.v ?? 1;
+    let best = Number.POSITIVE_INFINITY;
+    for (const v of data.verses) {
+      const r = document.querySelector(`[data-testid="verse-${v.v}"]`)?.getBoundingClientRect();
+      if (!r) continue;
+      const d = Math.abs(r.top + r.height / 2 - window.innerHeight / 2);
+      if (d < best) {
+        best = d;
+        anchor = v.v;
+      }
+    }
+    setCascadeAnchor(anchor);
+    clearTimeout(cascadeTimer.current);
+    cascadeTimer.current = setTimeout(() => setCascadeAnchor(null), 2500);
     setOpenVerses(allOpen ? new Set() : new Set(data.verses.map((v) => v.v)));
   };
 
   const toggleVerse = (v: number) => {
     if (!openVerses.has(v)) markRevealed();
+    setCascadeAnchor(null);
     setOpenVerses((prev) => {
       const next = new Set(prev);
       next.has(v) ? next.delete(v) : next.add(v);
@@ -435,6 +523,12 @@ export default function ReadPage() {
 
   return (
     <div className="relative z-10 min-h-screen pb-[calc(7rem+env(safe-area-inset-bottom))] sm:pb-12">
+      <div
+        ref={progressRef}
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5 origin-left bg-primary"
+        style={{ transform: "scaleX(0)" }}
+      />
       <AppHeader reading />
       {nudge && <SupportNudge chapters={nudge.chapters} onClose={() => setNudge(null)} />}
 
@@ -488,6 +582,7 @@ export default function ReadPage() {
             </div>
 
             <div
+              ref={versesRef}
               className={cn("py-4 transition-opacity duration-200", isPlaceholderData && "opacity-60")}
               aria-busy={isPlaceholderData}
             >
@@ -499,6 +594,7 @@ export default function ReadPage() {
                   readLang={readLang}
                   altLang={altLang}
                   open={openVerses.has(verse.v)}
+                  revealDelay={cascadeAnchor === null ? 0 : Math.min(Math.abs(verse.v - cascadeAnchor) * 0.045, 1)}
                   favorite={favoriteSet.has(verse.v)}
                   highlight={highlightByVerse.get(verse.v)}
                   note={noteByVerse.get(verse.v)}
@@ -545,9 +641,7 @@ export default function ReadPage() {
                   aria-label="Koniec rozdziału"
                   className="mt-8 flex flex-col items-center gap-2 border-t border-border pt-6 text-center"
                 >
-                  <p className="flex items-center gap-2 font-display text-lg text-read-marker">
-                    <Check className="h-5 w-5 animate-celebrate-pop" aria-hidden="true" /> Rozdział przeczytany
-                  </p>
+                  <ChapterDone />
                   <Button
                     variant="ghost"
                     size="sm"
@@ -579,6 +673,49 @@ export default function ReadPage() {
         )}
       </main>
     </div>
+  );
+}
+
+/** „Rozdział przeczytany": ptaszek rysuje się i krótko rozświetla się, gdy czytelnik dojedzie do końca. */
+function ChapterDone() {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const reduceMotion = useReducedMotion();
+  useGSAP(
+    () => {
+      const el = ref.current;
+      if (!el || reduceMotion) return;
+      const shapes = el.querySelectorAll("svg *");
+      const ring = el.querySelector("[data-done-ring]");
+      gsap.set(shapes, { drawSVG: "0%" });
+      const io = new IntersectionObserver(
+        ([entry]) => {
+          if (!entry?.isIntersecting) return;
+          io.disconnect();
+          gsap
+            .timeline()
+            .fromTo(shapes, { drawSVG: "0%" }, { drawSVG: "100%", duration: 0.5, ease: "power2.out" }, 0.05)
+            .fromTo(ring, { scale: 0.5, opacity: 0.9 }, { scale: 2.4, opacity: 0, duration: 0.9, ease: "power2.out" }, 0);
+        },
+        { threshold: 0.6 },
+      );
+      io.observe(el);
+      // Bezpiecznik: ptaszek nigdy nie może zostać niewidoczny.
+      const failsafe = setTimeout(() => gsap.set(shapes, { drawSVG: "100%" }), 6000);
+      return () => {
+        io.disconnect();
+        clearTimeout(failsafe);
+      };
+    },
+    { scope: ref, dependencies: [reduceMotion] },
+  );
+  return (
+    <p ref={ref} className="flex items-center gap-2 font-display text-lg text-read-marker">
+      <span className="relative inline-flex h-5 w-5 items-center justify-center">
+        <span data-done-ring aria-hidden="true" className="absolute inset-0 rounded-full bg-read-marker/30 opacity-0" />
+        <Check className="relative h-5 w-5" aria-hidden="true" />
+      </span>
+      Rozdział przeczytany
+    </p>
   );
 }
 

@@ -1,8 +1,10 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useReducedMotion } from "framer-motion";
 import { Highlighter, Languages, Layers, MoreHorizontal, Pencil, StickyNote, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
+import { gsap, nearViewport, SplitText, useGSAP } from "@/lib/gsap";
 import { cn } from "@/lib/utils";
 import { HIGHLIGHT_COLORS, type HighlightColor, type ParallelVerse } from "@shared/schema";
 
@@ -40,6 +42,8 @@ interface VerseRowProps {
   onHighlight: (color: HighlightColor | null) => void;
   /** Pusty tekst usuwa notatkę. */
   onSaveNote: (text: string) => void;
+  /** Opóźnienie (s) animacji odsłonięcia/zwinięcia — „rozwiń wszystkie" puszcza falę od werseta pod okiem. */
+  revealDelay?: number;
   /** Bez konta ulubione, wyróżnienia i notatki nie mają gdzie się zapisać, więc nie pokazujemy tych akcji wcale. */
   locked?: boolean;
 }
@@ -67,9 +71,69 @@ export function VerseRow({
   onToggleCard,
   onHighlight,
   onSaveNote,
+  revealDelay = 0,
   locked,
 }: VerseRowProps) {
   const toggledByClick = useRef(false);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const altRef = useRef<HTMLDivElement>(null);
+  const tlRef = useRef<gsap.core.Timeline | null>(null);
+  const splitRef = useRef<SplitText | null>(null);
+  const delayRef = useRef(0);
+  delayRef.current = revealDelay;
+  const reduceMotion = useReducedMotion();
+  // Blok z tłumaczeniem zostaje w DOM do końca animacji zwijania, dopiero potem znika.
+  const [mounted, setMounted] = useState(open);
+  useEffect(() => {
+    if (open) setMounted(true);
+  }, [open]);
+  const altVisible = open || mounted;
+
+  // „Zapalenie lampy": wysokość rozpycha kolejne wersety (zamiast skoku), linie tekstu wjeżdżają z maski,
+  // bursztynowa kreska rysuje się od góry, a wiersz na chwilę ciepło się rozjaśnia.
+  useGSAP(
+    () => {
+      const wrap = altRef.current;
+      tlRef.current?.kill();
+      splitRef.current?.revert(); // przerwana animacja nie może zostawić pociętego tekstu
+      splitRef.current = null;
+      if (!wrap) return;
+      const snap = reduceMotion || !nearViewport(rowRef.current);
+      if (!open) {
+        if (!mounted) return;
+        if (snap) return setMounted(false);
+        const text = wrap.querySelector<HTMLElement>("[data-alt-text]");
+        tlRef.current = gsap
+          .timeline({ delay: delayRef.current, onComplete: () => setMounted(false) })
+          .set(wrap, { overflow: "hidden" })
+          .to(text, { opacity: 0, duration: 0.14, ease: "power1.out" })
+          .to(wrap, { height: 0, duration: 0.3, ease: "power2.inOut" }, 0.04);
+        return;
+      }
+      if (snap) return;
+      const text = wrap.querySelector<HTMLElement>("[data-alt-text]");
+      const rule = wrap.querySelector<HTMLElement>("[data-alt-rule]");
+      const glow = rowRef.current?.querySelector<HTMLElement>("[data-alt-glow]");
+      if (!text) return;
+      const split = SplitText.create(text, { type: "lines", mask: "lines", linesClass: "alt-line" });
+      splitRef.current = split;
+      const tl = gsap.timeline({
+        delay: delayRef.current,
+        onComplete: () => {
+          split.revert(); // po animacji tekst wraca do zwykłego akapitu (zawijanie, kopiowanie, zmiana rozmiaru)
+          gsap.set(wrap, { clearProps: "height,overflow" });
+        },
+      });
+      tl.set(wrap, { overflow: "hidden" })
+        .fromTo(wrap, { height: 0 }, { height: "auto", duration: 0.4, ease: "power3.out" }, 0)
+        .from(split.lines, { yPercent: 115, duration: 0.6, ease: "power3.out", stagger: 0.07 }, 0.06);
+      if (rule) tl.fromTo(rule, { scaleY: 0 }, { scaleY: 1, duration: 0.5, ease: "power2.out" }, 0.08);
+      if (glow) tl.fromTo(glow, { opacity: 1 }, { opacity: 0, duration: 1.2, ease: "power2.out" }, 0.05);
+      tlRef.current = tl;
+    },
+    // `mounted` celowo poza zależnościami: jego zmiana po otwarciu nie może restartować animacji.
+    { dependencies: [open, reduceMotion], scope: rowRef },
+  );
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -104,14 +168,23 @@ export function VerseRow({
 
   return (
     <div
+      ref={rowRef}
+      data-verse-row
       className={cn(
-        "group grid grid-cols-[1.75rem_1fr_auto] items-start gap-x-2 rounded-lg px-1.5 py-2 transition-colors sm:grid-cols-[2.25rem_1fr_auto] sm:gap-x-3 sm:px-2.5",
+        "group relative grid grid-cols-[1.75rem_1fr_auto] items-start gap-x-2 rounded-lg px-1.5 py-2 transition-colors sm:grid-cols-[2.25rem_1fr_auto] sm:gap-x-3 sm:px-2.5",
         highlight ? `hl-${highlight}` : open && "bg-accent/40",
         hint && !open && "reveal-nudge",
         !highlight && "hover:bg-accent/50",
       )}
       data-testid={`verse-${verse.v}`}
     >
+      {altVisible && (
+        <span
+          data-alt-glow
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 rounded-lg bg-primary/10 opacity-0"
+        />
+      )}
       <button
         type="button"
         onClick={onToggle}
@@ -149,19 +222,21 @@ export function VerseRow({
       >
         <p className="verse-en" lang={readLang}>{verse.text}</p>
 
-        {open && (
-          <p
-            id={altId}
-            lang={altLang}
-            className="verse-pl mt-2 animate-verse-reveal border-l-2 border-primary/40 pl-3"
-            data-testid={`verse-pl-${verse.v}`}
-          >
-            {verse.alt ?? (
-              <span className="text-xs not-italic text-muted-foreground">
-                Brak odpowiednika w numeracji tego tłumaczenia — zajrzyj do sąsiednich wersetów.
-              </span>
-            )}
-          </p>
+        {altVisible && (
+          <div ref={altRef} className="relative pt-2">
+            <span
+              data-alt-rule
+              aria-hidden="true"
+              className="absolute bottom-0 left-0 top-2 w-0.5 origin-top rounded-full bg-primary/40"
+            />
+            <p id={altId} data-alt-text lang={altLang} className="verse-pl pl-3" data-testid={`verse-pl-${verse.v}`}>
+              {verse.alt ?? (
+                <span className="text-xs not-italic text-muted-foreground">
+                  Brak odpowiednika w numeracji tego tłumaczenia — zajrzyj do sąsiednich wersetów.
+                </span>
+              )}
+            </p>
+          </div>
         )}
       </div>
 

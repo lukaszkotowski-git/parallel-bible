@@ -7,6 +7,7 @@ import { RequireAuth } from "@/components/require-auth";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchStats, qk, type StatsDto } from "@/lib/api";
+import { CountUp } from "@/components/count-up";
 import { chapterHref, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { BOOKS } from "@shared/books";
@@ -19,7 +20,7 @@ function StatTile({ icon, label, value, hint }: { icon?: React.ReactNode; label:
         {icon}
         {label}
       </p>
-      <p className="mt-1 font-display text-3xl font-bold tabular-nums leading-none">{value}</p>
+      <p className="mt-1 font-display text-3xl font-bold tabular-nums leading-none"><CountUp value={value} /></p>
       {hint && <p className="mt-1.5 text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
