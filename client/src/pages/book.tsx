@@ -10,6 +10,7 @@ import { announceReward } from "@/lib/rewards";
 import { fetchReadChapters, invalidateUserState, qk, setBookRead, type BookDto } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { BOOK_TITLE_VT } from "@/lib/view-transition";
+import { usePageTitle } from "@/lib/page-title";
 
 export default function BookPage() {
   const { book: bookId = "" } = useParams<{ book: string }>();
@@ -41,6 +42,7 @@ export default function BookPage() {
   });
 
   const book = books?.find((b) => b.id === bookId);
+  usePageTitle(book?.namePl);
   const readSet = new Set((read ?? []).map((r) => r.chapter));
   const current = state?.position?.bookId === bookId ? state.position.chapter : null;
 
@@ -51,7 +53,7 @@ export default function BookPage() {
       <main id="main" tabIndex={-1} className="mx-auto max-w-3xl px-4 pb-20 pt-6 sm:px-6">
         <Link
           href="/"
-          className="inline-flex items-center gap-1.5 rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground"
+          className="relative after:absolute after:-inset-x-1 after:-inset-y-3 after:content-[''] inline-flex items-center gap-1.5 rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground"
           data-testid="link-back-books"
         >
           <ArrowLeft className="h-4 w-4" /> Wybór księgi

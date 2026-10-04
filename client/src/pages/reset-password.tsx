@@ -7,12 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { authClient } from "@/lib/auth";
+import { usePageTitle } from "@/lib/page-title";
 
 /**
  * Cel linku z maila o resecie hasła. Better Auth przekierowuje na
  * `/?token=…#/reset-hasla` (albo `?error=INVALID_TOKEN`) — parametry są przed hashem.
  */
 export default function ResetPasswordPage() {
+  usePageTitle("Nowe hasło");
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const params = new URLSearchParams(window.location.search);

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { motion, useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { ArrowRight, BookOpen, Search } from "lucide-react";
 import { AmbientLight } from "@/components/ambient-light";
 import { HeroDemo } from "@/components/hero-demo";
@@ -111,11 +111,12 @@ function BookTile({
           </span>
         )}
       </span>
-      <motion.span
-        className="absolute bottom-0 left-0 h-0.5 bg-read-marker/70"
-        initial={introDelay !== null ? { width: 0 } : false}
-        animate={{ width: `${(readCount / book.chapterCount) * 100}%` }}
-        transition={{ duration: 0.9, delay: (introDelay ?? 0) + 0.2, ease: [0.16, 1, 0.3, 1] }}
+      <span
+        className={cn("book-bar absolute bottom-0 left-0 h-0.5 w-full bg-read-marker/70", introDelay !== null && "book-bar--intro")}
+        style={{
+          transform: `scaleX(${readCount / book.chapterCount})`,
+          animationDelay: introDelay !== null ? `${introDelay + 0.2}s` : undefined,
+        }}
         aria-hidden="true"
       />
     </Link>
@@ -244,15 +245,10 @@ export default function Home() {
         <h1 className="font-display text-xl font-bold leading-tight sm:text-xl">
           {intro ? <BlurWords text="Pismo w dwóch językach" stagger={0.07} /> : "Pismo w dwóch językach"}
         </h1>
-        <motion.p
-          className="mt-2 max-w-prose text-sm text-muted-foreground"
-          initial={intro ? { opacity: 0, y: 6 } : false}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
-        >
+        <p className={cn("mt-2 max-w-prose text-sm text-muted-foreground", intro && "intro-rise")}>
           Jedno tłumaczenie czytasz ciągiem, a drugie odsłaniasz kliknięciem w werset.
           Wybierz księgę, żeby zacząć.
-        </motion.p>
+        </p>
 
         <div className="mt-6 space-y-4">
           {continueTarget ? <ContinueCard target={continueTarget} /> : continueTarget === null && <HeroDemo />}

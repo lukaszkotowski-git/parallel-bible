@@ -12,6 +12,7 @@ import { chapterHref, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { BOOKS } from "@shared/books";
 import { dayKey } from "@shared/plans";
+import { usePageTitle } from "@/lib/page-title";
 
 function StatTile({ icon, label, value, hint }: { icon?: React.ReactNode; label: string; value: number; hint?: string }) {
   return (
@@ -162,6 +163,7 @@ function StatsContent() {
 }
 
 export default function StatsPage() {
+  usePageTitle("Statystyki");
   return (
     <div className="relative z-10 min-h-screen">
       <AppHeader />

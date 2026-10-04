@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Link } from "wouter";
 import { useQueries } from "@tanstack/react-query";
-import { useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { ArrowRight, Pointer } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchChapter, qk } from "@/lib/api";
@@ -256,7 +256,7 @@ export function HeroDemo() {
         )}
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-0.5">
+          <div className="-ml-[9px] flex items-center">
             {samples.map((s, i) => (
               <button
                 key={s.alt.id}
@@ -268,7 +268,8 @@ export function HeroDemo() {
                   setOpen(true);
                   setIndex(i);
                 }}
-                className="group/dot flex h-6 items-center px-0.5"
+                // Kropka ma 6 px, ale pole dotyku 24×44 px; ujemny margines trzyma wysokość stopki karty.
+                className="group/dot -my-2.5 flex h-11 items-center px-[9px]"
               >
                 <span
                   className={cn(
@@ -280,7 +281,7 @@ export function HeroDemo() {
                 />
               </button>
             ))}
-            <span className="ml-2 text-xs text-muted-foreground">Kliknij werset, by zmienić tłumaczenie</span>
+            <span className="ml-0.5 text-xs text-muted-foreground">Kliknij werset, by zmienić tłumaczenie</span>
           </div>
           <Link
             href={`/czytaj/${DEMO.book}/${DEMO.chapter}`}

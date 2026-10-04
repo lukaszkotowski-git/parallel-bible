@@ -24,13 +24,13 @@ import {
 } from "@/lib/api";
 import { chapterHref, chapterLabel, plural } from "@/lib/format";
 import { announceReward } from "@/lib/rewards";
-import { queryClient } from "@/lib/queryClient";
+import { apiErrorText, queryClient } from "@/lib/queryClient";
 import { PLAN_TEMPLATES } from "@shared/plans";
+import { usePageTitle } from "@/lib/page-title";
 
-const errorText = (e: unknown) =>
-  e instanceof Error ? e.message.replace(/^\d+:\s*/, "").replace(/^\{"message":"(.*)"\}$/, "$1") : "Spróbuj ponownie.";
 
 function Shell({ title, children }: { title: string; children: React.ReactNode }) {
+  usePageTitle(title);
   return (
     <div className="relative z-10 min-h-screen">
       <AppHeader />
@@ -60,7 +60,7 @@ function GroupsList() {
       invalidateGroups();
       navigate(`/grupy/${res.id}`);
     },
-    onError: (e) => toast({ title: "Nie udało się utworzyć grupy", description: errorText(e), variant: "destructive", duration: 5000 }),
+    onError: (e) => toast({ title: "Nie udało się utworzyć grupy", description: apiErrorText(e), variant: "destructive", duration: 5000 }),
   });
   const join = useMutation({
     mutationFn: () => joinGroup(code.trim()),
@@ -69,7 +69,7 @@ function GroupsList() {
       invalidateGroups();
       navigate(`/grupy/${res.id}`);
     },
-    onError: (e) => toast({ title: "Nie udało się dołączyć", description: errorText(e), variant: "destructive", duration: 5000 }),
+    onError: (e) => toast({ title: "Nie udało się dołączyć", description: apiErrorText(e), variant: "destructive", duration: 5000 }),
   });
 
   return (
@@ -86,7 +86,7 @@ function GroupsList() {
           {groups.map((g) => (
             <li key={g.id}>
               <Link href={`/grupy/${g.id}`} className="block rounded-xl border border-card-border bg-card p-4 shadow-xs transition-colors hover-elevate" data-testid={`group-${g.id}`}>
-                <span className="block font-display text-lg font-bold leading-tight">{g.name}</span>
+                <span className="block break-words font-display text-lg font-bold leading-tight">{g.name}</span>
                 <span className="mt-1 block text-sm text-muted-foreground">
                   {g.memberCount} {plural(g.memberCount, "osoba", "osoby", "osób")} · dziś czytało {g.readToday}
                   {g.hasPlan && " · wspólny plan"}
@@ -164,7 +164,7 @@ export function GroupJoinPage() {
       invalidateGroups();
       navigate(`/grupy/${res.id}`);
     },
-    onError: (e) => toast({ title: "Nie udało się dołączyć", description: errorText(e), variant: "destructive", duration: 5000 }),
+    onError: (e) => toast({ title: "Nie udało się dołączyć", description: apiErrorText(e), variant: "destructive", duration: 5000 }),
   });
 
   return (
@@ -198,7 +198,7 @@ function GroupDetail({ id }: { id: string }) {
   const act = useMutation({
     mutationFn: (fn: () => Promise<unknown>) => fn(),
     onSuccess: refresh,
-    onError: (e) => toast({ title: "Nie udało się", description: errorText(e), variant: "destructive", duration: 5000 }),
+    onError: (e) => toast({ title: "Nie udało się", description: apiErrorText(e), variant: "destructive", duration: 5000 }),
   });
 
   if (isLoading) return <Skeleton className="mt-6 h-64 rounded-xl" />;
@@ -229,7 +229,7 @@ function GroupDetail({ id }: { id: string }) {
   return (
     <div className="mt-2 space-y-6">
       {g.description && <p className="text-sm text-muted-foreground">{g.description}</p>}
-      <h2 className="font-display text-2xl font-bold leading-tight">{g.name}</h2>
+      <h2 className="break-words font-display text-2xl font-bold leading-tight">{g.name}</h2>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-xl border border-card-border bg-card p-4 shadow-xs">

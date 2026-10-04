@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { clearUserState, qk, saveTheme, type UserStateDto } from "@/lib/api";
 import { signOut, useSession } from "@/lib/auth";
 import { queryClient } from "@/lib/queryClient";
+import { cn } from "@/lib/utils";
 
 /**
  * Stan użytkownika istnieje tylko dla zalogowanych — bez sesji zapytanie
@@ -101,7 +102,7 @@ function AccountMenu() {
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9 rounded-full bg-primary/10 text-xs font-semibold text-primary hover:bg-primary/15"
+          className="h-9 w-9 shrink-0 rounded-full bg-primary/10 max-sm:h-11 max-sm:w-11 text-xs font-semibold text-primary hover:bg-primary/15"
           aria-label="Menu konta"
           data-testid="button-account"
         >
@@ -188,7 +189,7 @@ export function AppHeader({ children, reading = false }: { children?: React.Reac
       onFocusCapture={reveal}
       className={`vt-app-header sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur-sm transition-transform duration-200 ${hidden ? "max-sm:-translate-y-full" : ""}`}
     >
-      <div className="mx-auto flex h-16 max-w-3xl items-center gap-2 px-4 sm:gap-3 sm:px-6">
+      <div className="mx-auto flex h-16 max-w-3xl items-center gap-1 px-4 sm:gap-3 sm:px-6">
         <Brand />
         <div className="flex-1">{children}</div>
 
@@ -208,13 +209,22 @@ export function AppHeader({ children, reading = false }: { children?: React.Reac
           <TooltipContent>Tryb {theme === "dark" ? "jasny" : "ciemny"}</TooltipContent>
         </Tooltip>
 
-        <SupportButton variant="icon" className="shrink-0 max-sm:h-11 max-sm:w-11" />
+        {/* Na telefonie poza czytnikiem serce znika z nagłówka — strona główna i strona księgi mają
+            własny przycisk „Wesprzyj projekt", a czytnik podpowiedź po rozdziałach. Inaczej nagłówek
+            nie mieści się w 390 px. */}
+        <SupportButton variant="icon" className={cn("shrink-0 max-sm:h-11 max-sm:w-11", !reading && "max-sm:hidden")} />
 
-        {/* Ranking widoczny dla każdego; bez konta strona pokaże zaproszenie do logowania. */}
+        {/* Ranking widoczny dla każdego; bez konta strona pokaże zaproszenie do logowania.
+            Zalogowany ma go w menu konta, więc na telefonie nie dublujemy ikony. */}
         {!reading && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button asChild variant="ghost" size="icon" className="h-9 w-9">
+              <Button
+                asChild
+                variant="ghost"
+                size="icon"
+                className={cn("h-9 w-9 shrink-0 max-sm:h-11 max-sm:w-11", authed && "max-sm:hidden")}
+              >
                 <Link href="/ranking" aria-label="Ranking czytelników" data-testid="link-header-leaderboard">
                   <Trophy className="h-4 w-4" />
                 </Link>
@@ -227,7 +237,7 @@ export function AppHeader({ children, reading = false }: { children?: React.Reac
         {pending ? (
           <Skeleton className="h-9 w-9 rounded-full" />
         ) : !authed ? (
-          <Button asChild size="sm" variant={reading ? "outline" : "default"} className="shrink-0" data-testid="button-login">
+          <Button asChild size="sm" variant={reading ? "outline" : "default"} className="relative shrink-0 before:absolute before:inset-x-0 before:-inset-y-1.5 before:content-['']" data-testid="button-login">
             <Link href="/login">
               <LogIn className="mr-1.5 h-4 w-4" /> Zaloguj
             </Link>

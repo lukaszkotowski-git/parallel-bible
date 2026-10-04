@@ -12,6 +12,7 @@ import { queryClient } from "@/lib/queryClient";
 import { plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { LeaderboardBoard, LeaderboardRow } from "@shared/gamification";
+import { usePageTitle } from "@/lib/page-title";
 
 function Row({ row, unit }: { row: LeaderboardRow; unit: (n: number) => string }) {
   return (
@@ -119,6 +120,7 @@ function LeaderboardContent() {
 }
 
 export default function LeaderboardPage() {
+  usePageTitle("Ranking czytelników");
   return (
     <div className="relative z-10 min-h-screen">
       <AppHeader />

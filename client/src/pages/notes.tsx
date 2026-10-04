@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchNotes, qk } from "@/lib/api";
 import { chapterHref, chapterLabel } from "@/lib/format";
+import { usePageTitle } from "@/lib/page-title";
 
 function NotesList() {
   const { data, isLoading, isError, refetch } = useQuery({ queryKey: qk.notes, queryFn: fetchNotes, retry: 1 });
@@ -46,6 +47,7 @@ function NotesList() {
 }
 
 export default function NotesPage() {
+  usePageTitle("Moje notatki");
   return (
     <div className="relative z-10 min-h-screen">
       <AppHeader />

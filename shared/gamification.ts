@@ -2,7 +2,7 @@
 // Ton jest spokojny — nagradzamy regularność i głębię, nie tempo. XP, poziomy i postęp odznak
 // są zawsze wyliczane z danych (nie ma osobnego licznika, który mógłby się rozjechać).
 
-import { z } from "zod";
+export type { VerseRefInput } from "./validation";
 
 // ---------- XP i poziomy ----------
 
@@ -231,23 +231,11 @@ export interface RewardDto {
   level: number;
 }
 
-export const goalInputSchema = z.object({ dailyChapters: z.number().int().min(1).max(20) });
-export const restoreInputSchema = z.object({ day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) });
 
 // ---------- nauka ----------
 
-export const verseRefInputSchema = z.object({
-  bookId: z.string().min(1).max(16),
-  chapter: z.number().int().positive().max(150),
-  verse: z.number().int().positive().max(200),
-});
-export type VerseRefInput = z.infer<typeof verseRefInputSchema>;
-
 export const RATINGS = ["again", "hard", "good", "easy"] as const;
 export type Rating = (typeof RATINGS)[number];
-export const reviewInputSchema = verseRefInputSchema.extend({ rating: z.enum(RATINGS) });
-export const masteredInputSchema = verseRefInputSchema.extend({ mastered: z.boolean() });
-export const checkInputSchema = verseRefInputSchema.extend({ understood: z.boolean() });
 
 export interface LearnCardDto {
   bookId: string;
@@ -280,22 +268,6 @@ export interface VerseOfDayDto {
 
 // ---------- grupy ----------
 
-export const groupPlanSchema = z.object({
-  name: z.string().trim().min(1).max(80),
-  books: z.array(z.string()).min(1).max(66),
-  days: z.number().int().min(1).max(1500),
-});
-export const groupCreateSchema = z.object({
-  name: z.string().trim().min(2).max(60),
-  description: z.string().trim().max(300).optional(),
-});
-export const groupPatchSchema = z.object({
-  name: z.string().trim().min(2).max(60).optional(),
-  description: z.string().trim().max(300).nullable().optional(),
-  /** null = usuń wspólny plan. */
-  plan: groupPlanSchema.nullable().optional(),
-});
-export const groupJoinSchema = z.object({ code: z.string().trim().min(4).max(32) });
 
 export interface GroupSummaryDto {
   id: string;
@@ -369,7 +341,6 @@ export interface LeaderboardDto {
   streak: LeaderboardBoard;
 }
 
-export const leaderboardOptSchema = z.object({ show: z.boolean() });
 
 // ---------- zachęta do wsparcia ----------
 

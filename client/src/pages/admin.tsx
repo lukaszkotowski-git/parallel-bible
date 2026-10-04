@@ -23,8 +23,9 @@ import {
   revokeUserSessions,
   type AdminUsersDto,
 } from "@/lib/api";
-import { queryClient } from "@/lib/queryClient";
+import { apiErrorText, queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
+import { usePageTitle } from "@/lib/page-title";
 
 type Row = AdminUsersDto["users"][number];
 
@@ -56,7 +57,7 @@ function UserRow({ user, isSelf, onChanged }: { user: Row; isSelf: boolean; onCh
     onSuccess: () => onChanged(),
     // Serwer zwraca czytelne komunikaty ("To ostatni administrator") — pokazujemy je wprost.
     onError: (err: Error) =>
-      toast({ title: "Nie udało się", description: err.message.replace(/^\d+:\s*/, "").replace(/^\{"message":"(.*)"\}$/, "$1"), variant: "destructive", duration: 5000 }),
+      toast({ title: "Nie udało się", description: apiErrorText(err), variant: "destructive", duration: 5000 }),
   });
   const isAdmin = user.role === "admin";
 
@@ -213,6 +214,7 @@ function AdminContent() {
 }
 
 export default function AdminPage() {
+  usePageTitle("Panel administratora");
   const { data: state, isLoading } = useUserState();
   return (
     <div className="relative z-10 min-h-screen">

@@ -19,15 +19,15 @@
   --sidebar: 40 28% 94%;
   --sidebar-foreground: 30 14% 14%;
   --sidebar-border: 36 20% 87%;
-  --sidebar-primary: 32 62% 38%;
+  --sidebar-primary: 32 62% 34%;
   --sidebar-primary-foreground: 40 45% 97%;
   --sidebar-accent: 38 25% 88%;
   --sidebar-accent-foreground: 30 14% 14%;
-  --sidebar-ring: 32 62% 38%;
+  --sidebar-ring: 32 62% 34%;
   --popover: 42 50% 98%;
   --popover-foreground: 30 14% 14%;
   --popover-border: 36 20% 86%;
-  --primary: 32 62% 38%;
+  --primary: 32 62% 34%;            /* 34%: AA (≥4,5:1) także na tle hover/tint (38 28% 89%) */
   --primary-foreground: 40 45% 97%;
   --secondary: 38 26% 90%;
   --secondary-foreground: 30 14% 14%;
@@ -38,8 +38,8 @@
   --destructive: 8 62% 42%;
   --destructive-foreground: 40 45% 97%;
   --input: 36 18% 78%;
-  --ring: 32 62% 38%;
-  --chart-1: 32 62% 38%;
+  --ring: 32 62% 34%;
+  --chart-1: 32 62% 34%;
   --chart-2: 148 28% 34%;
   --chart-3: 24 40% 46%;
   --chart-4: 42 55% 45%;
@@ -505,4 +505,34 @@
 }
 .reveal-nudge {
   animation: reveal-nudge-row 1.8s ease-out 0.7s 1 both;
+}
+
+/* Wejście nagłówka strony głównej (BlurWords) i leadu: słowa wyłaniają się z rozmycia, lead podnosi się
+   o kilka pikseli. Czyste CSS zamiast framer-motion; opóźnienia podaje komponent w `animation-delay`.
+   Przy prefers-reduced-motion globalna reguła skraca to do jednej klatki. */
+@keyframes blur-word-in {
+  from { opacity: 0; filter: blur(8px); transform: translateY(0.25em); }
+}
+.blur-word {
+  display: inline-block;
+  animation: blur-word-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes intro-rise {
+  from { opacity: 0; transform: translateY(6px); }
+}
+.intro-rise {
+  animation: intro-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
+}
+
+/* Pasek postępu na kafelku księgi: scaleX zamiast width (bez przeliczania układu). Przy wejściu rośnie
+   od zera (opóźnienie z komponentu), późniejsze zmiany postępu płyną przejściem. */
+@keyframes book-bar-grow {
+  from { transform: scaleX(0); }
+}
+.book-bar {
+  transform-origin: left;
+  transition: transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.book-bar--intro {
+  animation: book-bar-grow 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
 }

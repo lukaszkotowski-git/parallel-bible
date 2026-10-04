@@ -2,7 +2,7 @@
 name: Parallel Bible
 description: Czytnik Pisma w dwóch przekładach — ciepły papier, szeryfowy tekst, bursztynowy akcent, płasko.
 colors:
-  amber-ink: "hsl(32 62% 38%)"
+  amber-ink: "hsl(32 62% 34%)"
   amber-ink-on: "hsl(40 45% 97%)"
   parchment: "hsl(40 33% 96%)"
   parchment-card: "hsl(42 50% 98%)"
@@ -114,7 +114,7 @@ Gęstość jest niska, a rytm wolny: wąska kolumna czytania (`max-w-3xl`), hojn
 Paleta pergaminu i atramentu: kremowe tła, brązowy tusz, jeden bursztynowy akcent i mech dla ukończenia. Wartości w HSL (źródło prawdy: `client/src/index.css`); ciemny motyw przesuwa ten sam odcień w stronę ciepłego brązu.
 
 ### Primary
-- **Bursztynowy Atrament** (hsl(32 62% 38%); ciemny: hsl(34 68% 56%)): akcent marki — przyciski główne, rozdzielacz w logotypie („Bible"), pierścień fokusu, liczniki w toku, kreska przy drugim przekładzie. Tekst na nim: **Pergaminowa Biel** (hsl(40 45% 97%)).
+- **Bursztynowy Atrament** (hsl(32 62% 34%); ciemny: hsl(34 68% 56%)): akcent marki — przyciski główne, rozdzielacz w logotypie („Bible"), pierścień fokusu, liczniki w toku, kreska przy drugim przekładzie. Tekst na nim: **Pergaminowa Biel** (hsl(40 45% 97%)).
 
 ### Secondary
 - **Mech Ukończenia** (hsl(148 30% 32%); ciemny: hsl(148 34% 52%)): wyłącznie znacznik przeczytanego rozdziału/księgi i seria wykresów.

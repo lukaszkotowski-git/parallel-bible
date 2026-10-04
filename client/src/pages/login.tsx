@@ -17,6 +17,7 @@ import {
 } from "@/lib/auth";
 import { invalidateUserState } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { usePageTitle } from "@/lib/page-title";
 
 type Mode = "login" | "register" | "forgot";
 
@@ -39,6 +40,7 @@ function translateError(message?: string) {
 }
 
 export default function LoginPage() {
+  usePageTitle("Logowanie");
   const [, navigate] = useLocation();
   const [mode, setMode] = useState<Mode>("login");
   const [name, setName] = useState("");
@@ -136,7 +138,7 @@ export default function LoginPage() {
       <main id="main" tabIndex={-1} className="w-full max-w-sm">
         <Link
           href="/"
-          className="mb-6 inline-flex items-center gap-1.5 rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground"
+          className="relative after:absolute after:-inset-x-1 after:-inset-y-3 after:content-[''] mb-6 inline-flex items-center gap-1.5 rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground"
           data-testid="link-back-home"
         >
           <ArrowLeft className="h-4 w-4" /> Czytaj bez logowania
@@ -266,7 +268,7 @@ export default function LoginPage() {
               {mode === "login" && config?.mail && (
                 <button
                   type="button"
-                  className="rounded text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                  className="relative after:absolute after:-inset-x-1 after:-inset-y-3 after:content-[''] rounded text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                   onClick={() => switchMode("forgot")}
                   data-testid="button-forgot"
                 >

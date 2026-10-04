@@ -10,6 +10,7 @@ import { fetchBadges, fetchProgress, qk } from "@/lib/api";
 import { plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { BADGES, CATEGORY_LABEL, LEVELS, XP, type BadgeCategory } from "@shared/gamification";
+import { usePageTitle } from "@/lib/page-title";
 
 const XP_ROWS = [
   { key: "chapters", label: "Przeczytane rozdziały", hint: `${XP.chapter} pkt za rozdział` },
@@ -144,6 +145,7 @@ function Collection() {
 }
 
 export default function BadgesPage() {
+  usePageTitle("Postępy i odznaki");
   return (
     <div className="relative z-10 min-h-screen">
       <AppHeader />

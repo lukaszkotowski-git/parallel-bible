@@ -19,30 +19,28 @@ import {
   updateGroup,
 } from "./groups";
 import {
-  bookReadSchema,
   adminUserPatchSchema,
+  bookReadSchema,
   chapterRefSchema,
-  favoriteInputSchema,
-  highlightInputSchema,
-  noteInputSchema,
-  planInputSchema,
-  themeSchema,
-  translationPrefsSchema,
-} from "@shared/schema";
-import { safeTimeZone } from "@shared/plans";
-import type { SupportConfig } from "@shared/schema";
-import {
   checkInputSchema,
+  favoriteInputSchema,
   goalInputSchema,
-  leaderboardOptSchema,
   groupCreateSchema,
   groupJoinSchema,
   groupPatchSchema,
+  highlightInputSchema,
+  leaderboardOptSchema,
   masteredInputSchema,
+  noteInputSchema,
+  planInputSchema,
   restoreInputSchema,
   reviewInputSchema,
+  themeSchema,
+  translationPrefsSchema,
   verseRefInputSchema,
-} from "@shared/gamification";
+} from "@shared/validation";
+import { safeTimeZone } from "@shared/plans";
+import type { SupportConfig } from "@shared/schema";
 import { z } from "zod";
 
 // Tekst biblijny jest niezmienny → agresywny cache po stronie klienta/CDN.

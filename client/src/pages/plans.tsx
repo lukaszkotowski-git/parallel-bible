@@ -24,6 +24,7 @@ import { queryClient } from "@/lib/queryClient";
 import { announceReward } from "@/lib/rewards";
 import { BOOKS } from "@shared/books";
 import { PLAN_TEMPLATES, planChapters } from "@shared/plans";
+import { usePageTitle } from "@/lib/page-title";
 
 const ChapterChip = ({ bookId, chapter, read }: { bookId: string; chapter: number; read?: boolean }) => (
   <Link
@@ -217,6 +218,7 @@ function NewPlanDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
 const queryClientInvalidate = () => queryClient.invalidateQueries({ queryKey: qk.plans });
 
 export default function PlansPage() {
+  usePageTitle("Plany czytania");
   const [creating, setCreating] = useState(false);
   const { toast } = useToast();
   return (

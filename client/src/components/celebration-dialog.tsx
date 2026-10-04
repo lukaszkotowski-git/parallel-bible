@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { ChevronsUp, Target, Trophy } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";

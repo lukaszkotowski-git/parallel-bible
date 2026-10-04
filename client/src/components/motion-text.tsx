@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
 
 interface BlurWordsProps {
   text: string;
@@ -26,14 +26,9 @@ export function BlurWords({ text, delay = 0, stagger = 0.04 }: BlurWordsProps) {
         {words.map((word, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: słowa się powtarzają, a lista jest statyczna
           <Fragment key={i}>
-            <motion.span
-              className="inline-block"
-              initial={{ opacity: 0, filter: "blur(8px)", y: "0.25em" }}
-              animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
-              transition={{ duration: 0.55, delay: delay + i * stagger, ease: [0.16, 1, 0.3, 1] }}
-            >
+            <span className="blur-word" style={{ animationDelay: `${delay + i * stagger}s` }}>
               {word}
-            </motion.span>
+            </span>
             {i < words.length - 1 && " "}
           </Fragment>
         ))}

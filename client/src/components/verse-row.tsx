@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { Highlighter, Languages, Layers, MoreHorizontal, Pencil, StickyNote, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -40,8 +40,8 @@ interface VerseRowProps {
   onCheck?: (understood: boolean) => void;
   onToggleCard?: () => void;
   onHighlight: (color: HighlightColor | null) => void;
-  /** Pusty tekst usuwa notatkę. */
-  onSaveNote: (text: string) => void;
+  /** Pusty tekst usuwa notatkę. `false` = zapis się nie udał (edytor wraca ze szkicem). */
+  onSaveNote: (text: string) => Promise<boolean>;
   /** Opóźnienie (s) animacji odsłonięcia/zwinięcia — „rozwiń wszystkie" puszcza falę od werseta pod okiem. */
   revealDelay?: number;
   /** Bez konta ulubione, wyróżnienia i notatki nie mają gdzie się zapisać, więc nie pokazujemy tych akcji wcale. */
@@ -145,10 +145,15 @@ export function VerseRow({
     if (!unsaved) setDraft(note ?? "");
     setEditing(true);
   };
-  const finishEditing = () => {
-    if (draft.trim() !== (note ?? "")) onSaveNote(draft);
+  const finishEditing = async () => {
     setUnsaved(false);
     setEditing(false);
+    if (draft.trim() === (note ?? "")) return;
+    // Błąd zapisu nie może zjeść wpisanego tekstu: edytor wraca z tym samym szkicem.
+    if (!(await onSaveNote(draft))) {
+      setUnsaved(true);
+      setEditing(true);
+    }
   };
   const cancelEditing = () => {
     setUnsaved(draft.trim() !== (note ?? ""));
@@ -404,7 +409,7 @@ export function VerseRow({
                 type="button"
                 onClick={startEditing}
                 aria-label={`Edytuj notatkę do wersetu ${verse.v}`}
-                className="rounded p-1 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                className="relative rounded p-1 text-muted-foreground after:absolute after:-inset-2.5 after:content-[''] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Pencil className="h-3.5 w-3.5" />
               </button>

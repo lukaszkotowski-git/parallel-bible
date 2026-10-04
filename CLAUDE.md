@@ -78,9 +78,11 @@ routes, API paths, and the `shared/books.ts` reference table all key off it.
 - `shared/books.ts` — the 66-book canon table (id, Polish/English names, testament, chapter
   counts). This is the integrity reference: `scripts/import-bible.ts` verifies imported source
   data against it (66 books, 1189 chapters total) and fails the import if it doesn't match.
-- `shared/schema.ts` — API request/response DTOs and Zod input-validation schemas
-  (`chapterRefSchema`, `favoriteInputSchema`, `themeSchema`), used by both `server/routes.ts` and
-  the client's `lib/api.ts`.
+- `shared/schema.ts` / `shared/gamification.ts` — API request/response DTOs and shared constants,
+  used by both `server/routes.ts` and the client's `lib/api.ts`.
+- `shared/validation.ts` — Zod input-validation schemas (`chapterRefSchema`, `favoriteInputSchema`,
+  `themeSchema`, …), imported **only by the server**. Keep Zod out of modules the client imports
+  values from — it would add ~80 KB to the client bundle; input types are re-exported as `export type`.
 
 **Translation pair**: every `Translation` row with verses is selectable (`GET /api/translations`,
 public). The chapter endpoint takes `?read=<id>&alt=<id>`; `resolvePair()` in `shared/translations.ts`
@@ -114,8 +116,10 @@ assuming a 1:1 verse mapping.
 **Client** (`client/src/`): React 18 + Vite + TanStack Query + wouter, using **hash-based routing**
 (`useHashLocation` in `App.tsx`) — routes are `/#/`, `/#/ksiega/:book`, `/#/czytaj/:book/:chapter`.
 UI components are shadcn/ui (Radix primitives) under `client/src/components/ui/`, treated as
-generated/vendored — prefer composing them over editing internals. `client/src/lib/api.ts` centralizes
-all API calls and TanStack Query keys (`qk`); `invalidateUserState()` is the single place that
+generated/vendored — prefer composing them over editing internals. Home, book and chapter pages
+are in the main bundle; the other pages are separate chunks (`lazyPage()` in `App.tsx`) preloaded
+on idle so View-Transition navigation never renders a suspended fallback. `client/src/lib/api.ts`
+centralizes all API calls and TanStack Query keys (`qk`); `invalidateUserState()` is the single place that
 invalidates all user-state-dependent queries after a mutation — call it (or add to it) rather than
 invalidating query keys ad hoc.
 
@@ -123,7 +127,7 @@ invalidating query keys ad hoc.
 styles `::view-transition-*` in `index.css`). A `view-transition-name` must be unique per page: the book title
 (`book-title`) sits on the book/chapter `h1` and, on the home grid, on only one tile at a time via `nameBookTitle()`.
 The home hero demo (`components/hero-demo.tsx`) shows only when there is no reading position to continue.
-Honor `prefers-reduced-motion` (`useReducedMotion()` / the global CSS rule) in new animations.
+Honor `prefers-reduced-motion` (`useReducedMotion()` from `hooks/use-reduced-motion.ts` / the global CSS rule) in new animations.
 
 **Celebrations**: badges, level-ups and reaching the daily goal open a dialog with confetti
 (`CelebrationHost` in `App.tsx`, queue in `client/src/lib/rewards.ts`). Call `announceReward(res)` with the

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { Link, useLocation, useParams } from "wouter";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import {
@@ -50,6 +50,7 @@ import { useTranslations } from "@/lib/translations";
 import { queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { BOOK_TITLE_VT } from "@/lib/view-transition";
+import { usePageTitle } from "@/lib/page-title";
 
 const HINT_KEY = "pb-reveal-count";
 const HINT_REVEALS = 3;
@@ -201,9 +202,9 @@ export default function ReadPage() {
 
   // Czytnik ekranu i klawiatura: po zmianie rozdziału fokus wraca na tytuł, a tytuł karty się zmienia.
   const loadedTitle = !loading && data ? `${data.book.namePl} ${data.book.chapter}` : null;
+  usePageTitle(loadedTitle);
   useEffect(() => {
     if (!loadedTitle) return;
-    document.title = `${loadedTitle} — Parallel Bible`;
     titleRef.current?.focus({ preventScroll: true });
   }, [loadedTitle]);
 
@@ -387,8 +388,12 @@ export default function ReadPage() {
     invalidateMarks();
   };
 
-  const setNote = async (v: number, text: string) => {
-    if (!authed) return promptLogin("Notatki");
+  /** `false` = zapis się nie udał; VerseRow otwiera wtedy edytor ponownie z wpisanym tekstem. */
+  const setNote = async (v: number, text: string): Promise<boolean> => {
+    if (!authed) {
+      promptLogin("Notatki");
+      return false;
+    }
     const trimmed = text.trim();
     updateMarks((m) => ({
       ...m,
@@ -397,12 +402,20 @@ export default function ReadPage() {
         ...(trimmed ? [{ verse: v, text: trimmed, updatedAt: new Date().toISOString() }] : []),
       ],
     }));
+    let ok = true;
     try {
       announceReward(await saveNote(bookId, chapter, v, text));
     } catch {
-      toast({ title: "Nie udało się zapisać notatki", variant: "destructive", duration: 4000 });
+      ok = false;
+      toast({
+        title: "Nie udało się zapisać notatki",
+        description: "Tekst został w edytorze — spróbuj zapisać ponownie.",
+        variant: "destructive",
+        duration: 5000,
+      });
     }
     invalidateMarks();
+    return ok;
   };
 
   /** Odpowiedź po odsłonięciu tłumaczenia: „zrozumiałem" albo „musiałem sprawdzić" (to drugie dodaje fiszkę). */

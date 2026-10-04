@@ -20,6 +20,7 @@ import { chapterHref, chapterLabel, plural } from "@/lib/format";
 import { announceReward } from "@/lib/rewards";
 import { cn } from "@/lib/utils";
 import type { LearnCardDto } from "@shared/gamification";
+import { usePageTitle } from "@/lib/page-title";
 
 const RATING_BUTTONS: { rating: Rating; label: string; hint: string }[] = [
   { rating: "again", label: "Nie pamiętałem", hint: "wróci za chwilę" },
@@ -202,6 +203,7 @@ function LearnContent() {
 }
 
 export default function LearnPage() {
+  usePageTitle("Nauka wersetów");
   return (
     <div className="relative z-10 min-h-screen">
       <AppHeader />
